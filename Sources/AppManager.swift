@@ -8,9 +8,12 @@ final class AppManager: ObservableObject {
     @Published private(set) var authorization: AuthorizationStatus = .notDetermined
     @Published var diagnostic = "尚未读取系统授权。点击个人授权按钮后才连接 Family Controls 服务。"
     @Published private(set) var busy = false
+    @Published private(set) var requestOutstanding = false
+    @Published private(set) var authorizationStageText = "尚未连接系统服务"
     @Published private(set) var storageHealthy = true
     private lazy var store = ManagedSettingsStore(named: .init("calculator-vault-v1"))
     private var policy: PolicyController<ApplicationToken>!
+    private let authorizationProbe = AuthorizationProbe()
 
     init() {
         let file = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -52,23 +55,47 @@ final class AppManager: ObservableObject {
         @unknown default: return "未知状态"
         }
     }
-    func refreshAuthorization() async {
-        authorization = await Task.detached(priority: .userInitiated) {
-            AuthorizationCenter.shared.authorizationStatus
-        }.value
-        // No policy writes on foreground, background, launch, or authorization refresh.
-    }
-    func requestAuthorization() async {
-        guard !busy else { return }
-        busy = true
-        defer { busy = false }
-        do {
-            try await Task.detached(priority: .userInitiated) {
-                try await AuthorizationCenter.shared.requestAuthorization(for: .individual)
-            }.value
-            await refreshAuthorization()
-            diagnostic = "授权请求返回；系统状态：\(authorizationText)。请选一个第三方 App 验证隐藏与恢复。"
-        } catch { diagnostic = "个人授权失败\n" + describe(error) }
+    func requestAuthorization() {
+        guard !authorizationProbe.isPending else { return }
+        authorizationProbe.onEvent = { [weak self] event in
+            guard let self else { return }
+            switch event {
+            case .progress(let stage):
+                self.busy = true; self.requestOutstanding = true
+                self.authorizationStageText = stage.rawValue
+                self.diagnostic = "授权进行中：\(stage.rawValue)。等待上限 30 秒。"
+            case .timedOut(let stage):
+                self.busy = false
+                self.authorizationStageText = "等待超时：\(stage.rawValue)"
+                self.diagnostic = "30 秒内系统未返回。阶段：\(stage.rawValue)。\n尚未获得授权，选择 App 仍不可用。系统没有返回 NSError，因此目前无法确定是系统服务还是安装签名身份导致。\n底层请求可能仍在运行，不会重复发起；迟到的结果会更新界面。可以退出管理页。请复制这段诊断反馈。"
+            case .failed(let error):
+                self.busy = false; self.requestOutstanding = false
+                self.authorizationStageText = "系统返回错误"
+                self.diagnostic = "个人授权失败\n" + self.describe(error)
+            case .completed(let outcome):
+                self.busy = false; self.requestOutstanding = false
+                switch outcome {
+                case .approved: self.authorization = .approved
+                case .denied: self.authorization = .denied
+                case .notDetermined: self.authorization = .notDetermined
+                }
+                self.authorizationStageText = "系统已返回"
+                self.diagnostic = "授权请求返回；系统状态：\(self.authorizationText)。请选一个第三方 App 验证隐藏与恢复。"
+            }
+        }
+        authorizationProbe.start { report in
+            report(.initializing)
+            let center = AuthorizationCenter.shared
+            report(.requesting)
+            try await center.requestAuthorization(for: .individual)
+            report(.readingStatus)
+            switch center.authorizationStatus {
+            case .approved: return .approved
+            case .denied: return .denied
+            case .notDetermined: return .notDetermined
+            @unknown default: return .notDetermined
+            }
+        }
     }
     func select(_ value: FamilyActivitySelection) {
         guard approved else { diagnostic = "请先获得个人授权。"; return }

@@ -20,9 +20,13 @@ struct ManagementView: View {
             List {
                 Section("1 · 个人授权") {
                     LabeledContent("系统状态", value: manager.authorizationText)
-                    Button(manager.busy ? "正在请求…" : "请求 / 重试个人授权") {
-                        Task { await manager.requestAuthorization() }
-                    }.disabled(manager.busy)
+                    Button(manager.busy ? "正在请求…" : manager.requestOutstanding ? "系统请求尚未结束" : "请求 / 重试个人授权") {
+                        manager.requestAuthorization()
+                    }.disabled(manager.requestOutstanding)
+                    Text(manager.authorizationStageText).font(.footnote)
+                    if manager.requestOutstanding && !manager.busy {
+                        Text(manager.diagnostic).font(.footnote).foregroundStyle(.orange).textSelection(.enabled)
+                    }
                     Text("授权入口和使用历史仍由 iOS 保留。IPA 签名中存在 entitlement 不代表授权成功。")
                         .font(.footnote).foregroundStyle(.secondary)
                 }

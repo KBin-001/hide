@@ -1,0 +1,93 @@
+import Foundation
+
+enum AppMode: String, Codable, CaseIterable, Identifiable {
+    case normal, locked, hidden
+    var id: String { rawValue }
+    var title: String {
+        switch self { case .normal: return "正常"; case .locked: return "上锁"; case .hidden: return "隐藏" }
+    }
+}
+
+struct AppEntry<Token: Codable & Hashable>: Codable, Identifiable {
+    var id: UUID = UUID()
+    let token: Token
+    var mode: AppMode = .normal
+}
+
+struct PolicySnapshot<Token: Codable & Hashable>: Codable {
+    var version = 1
+    var entries: [AppEntry<Token>] = []
+}
+
+/// The single policy boundary: persist a complete next state, then submit only our restrictions.
+/// Initialization and lifecycle events deliberately never reapply saved restrictions.
+final class PolicyController<Token: Codable & Hashable> {
+    private(set) var snapshot = PolicySnapshot<Token>()
+    private(set) var loadError: Error?
+    private let save: (Data) throws -> Void
+    private let apply: (Set<Token>, Set<Token>) -> Void
+
+    init(load: () throws -> Data?, save: @escaping (Data) throws -> Void,
+         apply: @escaping (Set<Token>, Set<Token>) -> Void) {
+        self.save = save
+        self.apply = apply
+        do {
+            if let data = try load() {
+                let decoded = try JSONDecoder().decode(PolicySnapshot<Token>.self, from: data)
+                guard decoded.version == 1,
+                      Set(decoded.entries.map(\.token)).count == decoded.entries.count,
+                      Set(decoded.entries.map(\.id)).count == decoded.entries.count else {
+                    throw PolicyError.invalidState
+                }
+                snapshot = decoded
+            }
+        } catch { loadError = error }
+    }
+
+    func select(_ tokens: Set<Token>) throws {
+        guard loadError == nil else { throw PolicyError.invalidState }
+        var next = snapshot
+        next.entries.removeAll { !tokens.contains($0.token) }
+        let existing = Set(next.entries.map(\.token))
+        next.entries += tokens.subtracting(existing).map { AppEntry(token: $0) }
+        try commit(next)
+    }
+
+    func setMode(_ mode: AppMode, id: UUID) throws {
+        guard loadError == nil else { throw PolicyError.invalidState }
+        var next = snapshot
+        guard let index = next.entries.firstIndex(where: { $0.id == id }) else { return }
+        next.entries[index].mode = mode
+        try commit(next)
+    }
+
+    func restoreAll() throws {
+        var next = snapshot
+        for i in next.entries.indices { next.entries[i].mode = .normal }
+        // Emergency release works even if the state file cannot be written.
+        apply([], [])
+        snapshot = next
+        do { try save(JSONEncoder().encode(next)) }
+        catch { loadError = error; throw error }
+        loadError = nil
+    }
+
+    private func commit(_ next: PolicySnapshot<Token>) throws {
+        let locked = Set(next.entries.filter { $0.mode == .locked }.map(\.token))
+        let hidden = Set(next.entries.filter { $0.mode == .hidden }.map(\.token))
+        guard locked.count <= 50, hidden.count <= 50 else { throw PolicyError.tooMany }
+        try save(JSONEncoder().encode(next))
+        snapshot = next
+        apply(locked, hidden)
+    }
+}
+
+enum PolicyError: LocalizedError {
+    case invalidState, tooMany
+    var errorDescription: String? {
+        switch self {
+        case .invalidState: return "管理数据损坏或版本不兼容。请先恢复全部；不会自动重新施加限制。"
+        case .tooMany: return "上锁或隐藏每类最多 50 个 App。"
+        }
+    }
+}

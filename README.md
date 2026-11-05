@@ -1,0 +1,85 @@
+# 计算器
+
+自用 Swift + SwiftUI iPhone App，最低 iOS 16.0。固定 Bundle ID：`com.personal.calculatorvault`。没有服务器、登录、统计、订阅或网络请求。
+
+首次启动设置 4–12 位数字 PIN。之后按 **AC → PIN → =** 进入管理页；PIN 的前导零有效。普通加减乘除、连续运算、重复等号、小数、百分数和正负号可用（连续运算按输入顺序计算）。PIN 不作为常量写入项目，随机盐和 PIN 摘要仅存 Keychain，访问级别为本机解锁后可用，不同步。请记住 PIN，没有后门 PIN；卸载不保证删除 Keychain。
+
+退出管理页或进入后台后恢复计算器。系统授权弹窗的临时 inactive 不会关闭管理页；任务切换预览遮挡内容。退出管理页不会撤销限制，**恢复全部并退出** 才会撤销。
+
+## Windows 推送
+
+项目由 `project.yml` 完整描述；Actions 自动生成 Xcode 工程，无需本地 Mac、Xcode、Apple ID 密码或付费开发者证书。生成的 `.xcodeproj` 忽略提交。先在 GitHub 网页创建一个**空的私有仓库**，不要自动添加 README。把下面的仓库地址替换为你的地址：
+
+```powershell
+Set-Location 'C:\Users\27468\Documents\Calculator'
+git init -b main
+git add .
+git commit -m "Create personal calculator and IPA workflow"
+git remote add origin https://github.com/YOUR_NAME/YOUR_PRIVATE_REPO.git
+git push -u origin main
+```
+
+以后更新：
+
+```powershell
+Set-Location 'C:\Users\27468\Documents\Calculator'
+git add .
+git commit -m "Update calculator"
+git push
+```
+
+保持 Bundle ID、entitlement 中的标识与 Keychain group 不变，使用 TrollStore 覆盖安装；不要先卸载，以保留容器管理数据。私有仓库的标准 macOS runner 消耗你的 GitHub Actions 配额。
+
+## 手动打包和安装
+
+1. 仓库 → Actions → **Build IPA** → Run workflow → main → Run workflow。
+2. 工作流先运行核心行为测试，再编译 `generic/platform=iOS` 的 arm64 Release，临时 ad-hoc 签名，包装 `Payload/Calculator.app`。
+3. 成功后在运行详情底部下载 **Calculator-TrollStore** artifact（保留 **3 天**）。解压外层 artifact ZIP，里面才是 `Calculator.ipa`、`Calculator.ipa.sha256`、`verification.json`。
+4. 将 IPA 传到手机的“文件”，共享到已安装的 TrollStore，选择 Install；后续版本选择覆盖。此 IPA 用于 TrollStore，不是普通签名侧载或 App Store 分发包。
+5. 在桌面打开“计算器”，设置 PIN，按 AC → PIN → = 进入管理页。
+
+可在 PowerShell 核对下载的 SHA-256：
+
+```powershell
+Get-FileHash -Algorithm SHA256 .\Calculator.ipa
+Get-Content .\Calculator.ipa.sha256
+```
+
+只比较两者的散列值，文件路径显示可以不同。不要把 artifact ZIP 当成 IPA 安装。
+
+## 先验收最小链路
+
+1. 管理页点击“请求 / 重试个人授权”，完成系统认证。确认“系统状态”为已授权。失败时复制诊断区域全文反馈；包含 NSError domain、code、系统提供的原因/恢复建议、底层错误和 iOS 版本，不包含 PIN 或 App token。不要把敏感 App 选择截图公开。
+2. “选择 App”打开系统 FamilyActivityPicker，展开分类，只勾选一个非关键第三方 App，保存。只管理单个 App token；分类和网站不会施加限制。
+3. 该 App 选择“隐藏”，退到桌面检查图标消失、不能启动。后台切换不会改变策略。
+4. 回到计算器 → AC → PIN → =，将它改成“正常”。确认图标回来且能打开，再切过去使用。再次后台/重开后不应重新隐藏。
+5. 完成上述链路后再选第二个 App。A 隐藏、B 上锁；只将 A 改正常，确认 B 仍有图标、点击仍显示系统限制页。再切换隐藏 ↔ 上锁，确认没有遗留另一种限制。
+6. 重开管理页确认所选 App 和请求状态保留；取消选择某 App 会撤销本工具对它的限制。最后点“恢复全部并退出”，所有 App 应恢复。
+7. 错误 PIN 加等号应继续普通计算；进入管理页后退后台，再打开应是计算器。通过系统设置撤销屏幕使用时间权限后，管理页应反映未授权；重新授权不会自动重新施加保存的限制。
+
+上锁使用 `shield.applications`；隐藏使用 `application.blockedApplications`。只写入本工具的命名 store，不清除其他工具/系统的限制。不设置全分类屏蔽、监控扩展或后台重施加任务。保存的是**请求状态**，ManagedSettings setter 没有逐 App 成功回执，UI 不把提交成功称为隐藏成功。重开只加载数据，不重施加；若系统曾撤销权限，需要你重新明确选择状态来提交。
+
+“恢复全部”即使文件保存失败也先提交撤销请求，然后在管理页显示错误并禁止进一步状态编辑，直到重试保存成功。若忘记 PIN，优先到 iOS 设置 → 屏幕使用时间 → 具有屏幕使用时间访问权限的 App 中撤销本工具授权；不同版本文案可能不同。正常卸载/停用前先恢复全部。
+
+## 三个独立验收点
+
+| 验收点 | 当前交付状态 | 证据 |
+|---|---|---|
+| iPhone 编译与产物检查 | 待首次 GitHub Actions 运行 | Windows 无 Xcode/iOS SDK；尚未宣称编译通过 |
+| TrollStore 真机安装并运行 | 待你的设备反馈 | IPA 校验不能代替实际安装 |
+| 个人授权、隐藏、恢复、上锁 | 待你的设备反馈 | entitlement 存在不能代替系统授权或限制效果 |
+
+Actions 对**解压后的实际 IPA**检查：唯一 `Payload/*.app`、显示名和固定 ID、Info.plist 最低系统 16.0、iPhoneOS 平台/iPhone 设备族、arm64 架构、Mach-O iOS 平台及最低版本、codesign 完整性、签名内 Family Controls/Keychain entitlement 和无额外权限。检查失败不上传成功产物。验证报告仍把安装、授权、隐藏效果标为待真机验证。
+
+TrollStore 会重新签名并保留 entitlement，但这不保证 Family Controls 服务接受个人授权。本项目不使用私有 API、平台化、无沙盒权限或清理使用记录的方式绕过授权失败。Apple 正常分发路径需要审批 Family Controls entitlement；本包是单独的 TrollStore 测试路径。iOS 的屏幕使用时间历史和系统授权入口始终保留，它们是否存在不是隐藏成功指标。
+
+TrollStore 也不是支持所有 iOS 16 小版本；按其官方说明，支持至 16.6.1，另含 16.7 RC（20H18），不含正式 16.7.x。你已有的 TrollStore 是否可用仍需按具体系统确认。
+
+## 开发与文档
+
+- 核心对外行为测试：`swift test`（工作流自动执行）；覆盖 App 隔离、隐藏恢复、删除选择、持久化加载、限制数量、写入失败和计算器行为。系统服务、Keychain 和生命周期集成需要真机验收。
+- macOS 手动重现：`brew install xcodegen`，`python3 scripts/generate_icon.py`，`xcodegen generate`，`swift test`，`bash scripts/build_ipa.sh`。
+- 原创图标由仓库内纯 Python 脚本绘制，PNG 与 asset catalog 已随项目提供；Actions 会重新生成，无外部图像依赖。
+- 规格：`docs/SPEC.md`；本地逐票工单：`.scratch/calculator/issues/`；验收记录：`docs/VALIDATION.md`。尚未创建或发布远程 issue；以后需要配置 tracker 可运行 `/setup-matt-pocock-skills`。
+
+参考：[Apple blockedApplications](https://developer.apple.com/documentation/managedsettings/applicationsettings/blockedapplications-swift.property)、[个人授权与命名 store](https://developer.apple.com/videos/play/wwdc2022/110336/)、[Family Controls entitlement](https://developer.apple.com/documentation/familycontrols/requesting-the-family-controls-entitlement)、[TrollStore 官方说明](https://github.com/opa334/TrollStore)、[XcodeGen](https://github.com/yonaskolb/XcodeGen)、[GitHub 标准 runner](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)。

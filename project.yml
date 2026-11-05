@@ -1,0 +1,39 @@
+name: Calculator
+options:
+  bundleIdPrefix: com.personal
+  deploymentTarget:
+    iOS: '16.0'
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    IPHONEOS_DEPLOYMENT_TARGET: '16.0'
+    TARGETED_DEVICE_FAMILY: '1'
+    CODE_SIGNING_ALLOWED: NO
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+targets:
+  Calculator:
+    type: application
+    platform: iOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.personal.calculatorvault
+        PRODUCT_NAME: Calculator
+        INFOPLIST_FILE: Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Resources/Calculator.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    dependencies:
+      - sdk: FamilyControls.framework
+      - sdk: ManagedSettings.framework
+      - sdk: Security.framework
+    sources:
+      - path: Sources
+      - path: Resources/Assets.xcassets
+schemes:
+  Calculator:
+    build:
+      targets:
+        Calculator: all
+    run:
+      config: Debug
+    archive:
+      config: Release

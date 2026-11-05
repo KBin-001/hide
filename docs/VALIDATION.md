@@ -1,6 +1,6 @@
 # 验收记录
 
-记录日期：2026-11-05（Asia/Shanghai）。本地环境：Windows，没有 Xcode、iOS SDK 或 Swift 编译器。尚未建立远程仓库，未触发 Actions，也没有生成可下载的 IPA。
+记录日期：2026-11-05（Asia/Shanghai）。本地环境：Windows，没有 Xcode、iOS SDK 或 Swift 编译器。已推送 GitHub 仓库并完成真实 macOS 构建，IPA 已上传。
 
 ## 已在本地执行
 
@@ -11,18 +11,19 @@
 - 打包脚本通过 Git Bash 的 bash -n 语法检查。
 - 人工检查源码：无 PIN 常量、PIN 日志、网络请求、后台策略重施加；恢复使用专属命名 store。
 
-这些检查不等于 Swift 编译或系统能力验收。可移植核心测试已提供，尚未运行。
+这些本地检查不等于 Swift 编译或系统能力验收；远程编译与测试证据如下。
 
-## 等待首次 GitHub Actions
+## GitHub Actions 已通过
 
-- XcodeGen 生成工程与 Xcode 真实真机编译。
-- swift test 的五组外部行为测试。
-- ad-hoc 签名、IPA 包装、实际 Payload 内容与签名完整性。
-- 实际 Info.plist 最低系统版本、Mach-O arm64 架构/iOS 平台/最低版本。
-- codesign 从实际签名提取 Family Controls 和 Keychain entitlement，无额外权限。
-- Artifact 上传、下载及 SHA-256 比对。
+- [成功运行 42002897182](https://github.com/KBin-001/hide/actions/runs/42002897182)，源代码提交 8ef48f7；macos-15-arm64、Xcode 16.4、Swift 6.1.2、iPhoneOS SDK 18.5。
+- XcodeGen 生成工程与 Xcode arm64 真机 Release 编译通过。
+- swift test 的五组外部行为测试全部通过，0 failures。
+- ad-hoc 签名、IPA 包装、实际 Payload 内容与签名完整性检查通过。
+- 实际 Info.plist 最低系统版本 16.0、设备族仅 iPhone、Mach-O arm64 架构/iOS 平台/最低版本检查通过。
+- codesign 从实际签名提取 Family Controls 和 Keychain entitlement 检查通过，无额外权限。
+- Artifact Calculator-TrollStore 上传成功；保留至 2026-11-08 17:32（北京时间）。用户下载后的 SHA-256 比对待完成。
 
-以上任何一步未通过都不能宣称“可编译”。工作流会在失败步骤停止。
+首次运行 42001910481 的五项测试与编译同样通过，但 IPA 设备族校验失败。根因是 XcodeGen 目标级 iOS 默认设备族覆盖了项目级 TARGETED_DEVICE_FAMILY。现已将仅 iPhone 设置移到目标级；保留原有严格 IPA 校验，新运行完整通过。没有删去校验绕过错误。
 
 ## 等待用户真机反馈
 

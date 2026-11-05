@@ -65,7 +65,7 @@ Get-Content .\Calculator.ipa.sha256
 
 | 验收点 | 当前交付状态 | 证据 |
 |---|---|---|
-| iPhone 编译与产物检查 | 待首次 GitHub Actions 运行 | Windows 无 Xcode/iOS SDK；尚未宣称编译通过 |
+| iPhone 编译与产物检查 | 已通过 | [Build IPA 成功记录](https://github.com/KBin-001/hide/actions/runs/42002897182)，源码提交 8ef48f7；5 项测试、arm64 真机编译、IPA 与签名校验通过 |
 | TrollStore 真机安装并运行 | 待你的设备反馈 | IPA 校验不能代替实际安装 |
 | 个人授权、隐藏、恢复、上锁 | 待你的设备反馈 | entitlement 存在不能代替系统授权或限制效果 |
 

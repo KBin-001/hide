@@ -39,6 +39,8 @@ def inspect(ipa):
         check(info.get("CFBundleSupportedPlatforms") == ["iPhoneOS"], "Not a device build")
         check(info.get("UIDeviceFamily") == [1],
               f"Expected iPhone target [1], got {info.get('UIDeviceFamily')!r}")
+        check(isinstance(info.get("UIApplicationSceneManifest"), dict),
+              "SwiftUI scene lifecycle manifest missing")
         executable = app / info["CFBundleExecutable"]
         check(executable.is_file(), "Missing executable")
         # zipfile doesn't preserve mode bits; restore executable bit for codesign verification.

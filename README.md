@@ -4,6 +4,8 @@
 
 1.0.1：启动不再创建 Family Controls / ManagedSettings 对象，Keychain 查询在后台执行，并显式声明 SwiftUI 场景生命周期。计算部分复用 [Nick Lockwood Expression](https://github.com/nicklockwood/Expression)（MIT，固定源码版本并随包保留许可证）；本工具仅保留按键状态、PIN 入口和管理适配。旧版在 iPhone 13 Pro / iOS 16.3 已收到黑屏后退出的反馈；新版已通过 iOS 18.5 模拟器完整 UI 流程，iOS 16.3 真机仍需复验。
 
+真机反馈已确认 1.0.1 能进入管理页，但个人授权完全不出现系统弹窗、请求不返回。1.0.2 增加三阶段诊断和 30 秒等待提示，系统未返回时阻止叠加请求，并接收迟到结果；这不代表已打通系统授权，隐藏/上锁仍待验证。超时后请复制授权区显示的具体阶段。
+
 首次启动设置 4–12 位数字 PIN。之后按 **AC → PIN → =** 进入管理页；PIN 的前导零有效。普通加减乘除、连续运算、重复等号、小数、百分数和正负号可用（连续运算按输入顺序计算）。PIN 不作为常量写入项目，随机盐和 PIN 摘要仅存 Keychain，访问级别为本机解锁后可用，不同步。请记住 PIN，没有后门 PIN；卸载不保证删除 Keychain。
 
 退出管理页或进入后台后恢复计算器。系统授权弹窗的临时 inactive 不会关闭管理页；任务切换预览遮挡内容。退出管理页不会撤销限制，**恢复全部并退出** 才会撤销。
@@ -67,8 +69,8 @@ Get-Content .\Calculator.ipa.sha256
 
 | 验收点 | 当前交付状态 | 证据 |
 |---|---|---|
-| iPhone 编译与产物检查 | 1.0.1 已通过 | [Build IPA 成功记录](https://github.com/KBin-001/hide/actions/runs/42010959309)，源码提交 80ca22d；5 项核心测试、完整 UI 流程、arm64 真机编译、IPA 与签名校验通过 |
-| TrollStore 真机安装并运行 | 旧版能安装但启动失败；1.0.1 待真机复验 | 模拟器启动不能代替 iOS 16.3 真机验收 |
+| iPhone 编译与产物检查 | 1.0.2 已通过 | [Build IPA 成功记录](https://github.com/KBin-001/hide/actions/runs/42029011624)，源码提交 5e1ad7d；7 项核心测试、完整 UI 流程、arm64 真机编译、IPA 与签名校验通过 |
+| TrollStore 真机安装并运行 | 1.0.1 已确认能进入管理页；1.0.2 待覆盖复验 | 用户设备 iPhone 13 Pro / iOS 16.3 |
 | 个人授权、隐藏、恢复、上锁 | 待你的设备反馈 | entitlement 存在不能代替系统授权或限制效果 |
 
 Actions 对**解压后的实际 IPA**检查：唯一 `Payload/*.app`、显示名和固定 ID、Info.plist 最低系统 16.0、iPhoneOS 平台/iPhone 设备族、arm64 架构、Mach-O iOS 平台及最低版本、codesign 完整性、签名内 Family Controls/Keychain entitlement 和无额外权限。检查失败不上传成功产物。验证报告仍把安装、授权、隐藏效果标为待真机验证。

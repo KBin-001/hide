@@ -37,7 +37,8 @@ def inspect(ipa):
         check(info["CFBundleDisplayName"] == "计算器", "Wrong display name")
         check(info["MinimumOSVersion"] in ("16.0", "16.0.0"), "Wrong minimum OS")
         check(info.get("CFBundleSupportedPlatforms") == ["iPhoneOS"], "Not a device build")
-        check(info.get("UIDeviceFamily") == [1], "Expected iPhone target")
+        check(info.get("UIDeviceFamily") == [1],
+              f"Expected iPhone target [1], got {info.get('UIDeviceFamily')!r}")
         executable = app / info["CFBundleExecutable"]
         check(executable.is_file(), "Missing executable")
         # zipfile doesn't preserve mode bits; restore executable bit for codesign verification.

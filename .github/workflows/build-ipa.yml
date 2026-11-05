@@ -22,6 +22,18 @@ jobs:
           xcodegen generate --spec project.yml
       - name: Test policy and calculator behavior
         run: swift test
+      - name: Test real app launch and PIN flow
+        run: bash scripts/test_launch.sh
+      - name: Upload launch test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Launch-Test-Evidence
+          path: |
+            build/ui-results.xcresult
+            build/ui-attachments
+          retention-days: 3
+          if-no-files-found: warn
       - name: Build, sign and verify IPA
         run: bash scripts/build_ipa.sh
       - name: Upload IPA and verification report

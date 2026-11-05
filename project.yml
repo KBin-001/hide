@@ -28,6 +28,17 @@ targets:
     sources:
       - path: Sources
       - path: Resources/Assets.xcassets
+  CalculatorUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: Calculator
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.personal.calculatorvault.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: '1'
 schemes:
   Calculator:
     build:
@@ -35,5 +46,7 @@ schemes:
         Calculator: all
     run:
       config: Debug
+    test:
+      targets: [CalculatorUITests]
     archive:
       config: Release

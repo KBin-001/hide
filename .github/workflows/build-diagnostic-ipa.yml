@@ -1,0 +1,29 @@
+name: Build Diagnostic IPA
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate project
+        run: |
+          brew install xcodegen
+          python3 scripts/generate_icon.py
+          xcodegen generate --spec project.yml
+      - name: Core behavior tests
+        run: swift test
+      - name: Build and verify device diagnostic IPA
+        run: bash scripts/build_ipa.sh
+      - name: Label diagnostic validation status
+        run: |
+          echo '1.0.1 build 2. Device startup and Family Controls require physical-device feedback. This diagnostic workflow does not run the simulator UI test; use Build IPA for the full gate.' > dist/DIAGNOSTIC.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Calculator-1.0.1-Diagnostic
+          path: dist/
+          retention-days: 3
+          if-no-files-found: error

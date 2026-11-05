@@ -2,6 +2,8 @@
 
 自用 Swift + SwiftUI iPhone App，最低 iOS 16.0。固定 Bundle ID：`com.personal.calculatorvault`。没有服务器、登录、统计、订阅或网络请求。
 
+1.0.1：启动不再创建 Family Controls / ManagedSettings 对象，Keychain 查询在后台执行，并显式声明 SwiftUI 场景生命周期。计算部分复用 [Nick Lockwood Expression](https://github.com/nicklockwood/Expression)（MIT，固定源码版本并随包保留许可证）；本工具仅保留按键状态、PIN 入口和管理适配。旧版在 iPhone 13 Pro / iOS 16.3 已收到黑屏后退出的反馈；新版已通过 iOS 18.5 模拟器完整 UI 流程，iOS 16.3 真机仍需复验。
+
 首次启动设置 4–12 位数字 PIN。之后按 **AC → PIN → =** 进入管理页；PIN 的前导零有效。普通加减乘除、连续运算、重复等号、小数、百分数和正负号可用（连续运算按输入顺序计算）。PIN 不作为常量写入项目，随机盐和 PIN 摘要仅存 Keychain，访问级别为本机解锁后可用，不同步。请记住 PIN，没有后门 PIN；卸载不保证删除 Keychain。
 
 退出管理页或进入后台后恢复计算器。系统授权弹窗的临时 inactive 不会关闭管理页；任务切换预览遮挡内容。退出管理页不会撤销限制，**恢复全部并退出** 才会撤销。
@@ -57,7 +59,7 @@ Get-Content .\Calculator.ipa.sha256
 6. 重开管理页确认所选 App 和请求状态保留；取消选择某 App 会撤销本工具对它的限制。最后点“恢复全部并退出”，所有 App 应恢复。
 7. 错误 PIN 加等号应继续普通计算；进入管理页后退后台，再打开应是计算器。通过系统设置撤销屏幕使用时间权限后，管理页应反映未授权；重新授权不会自动重新施加保存的限制。
 
-上锁使用 `shield.applications`；隐藏使用 `application.blockedApplications`。只写入本工具的命名 store，不清除其他工具/系统的限制。不设置全分类屏蔽、监控扩展或后台重施加任务。保存的是**请求状态**，ManagedSettings setter 没有逐 App 成功回执，UI 不把提交成功称为隐藏成功。重开只加载数据，不重施加；若系统曾撤销权限，需要你重新明确选择状态来提交。
+上锁使用 `shield.applications`；隐藏使用 `application.blockedApplications`。只写入本工具的命名 store，不清除其他工具/系统的限制。不设置全分类屏蔽、监控扩展或后台重施加任务。保存的是**请求状态**，ManagedSettings setter 没有逐 App 成功回执，UI 不把提交成功称为隐藏成功。重开只加载数据，不重施加；管理页初始“未读取”表示未连接系统授权服务，点击授权按钮后才读取。若系统曾撤销权限，需要你重新明确选择状态来提交。
 
 “恢复全部”即使文件保存失败也先提交撤销请求，然后在管理页显示错误并禁止进一步状态编辑，直到重试保存成功。若忘记 PIN，优先到 iOS 设置 → 屏幕使用时间 → 具有屏幕使用时间访问权限的 App 中撤销本工具授权；不同版本文案可能不同。正常卸载/停用前先恢复全部。
 
@@ -65,8 +67,8 @@ Get-Content .\Calculator.ipa.sha256
 
 | 验收点 | 当前交付状态 | 证据 |
 |---|---|---|
-| iPhone 编译与产物检查 | 已通过 | [Build IPA 成功记录](https://github.com/KBin-001/hide/actions/runs/42002897182)，源码提交 8ef48f7；5 项测试、arm64 真机编译、IPA 与签名校验通过 |
-| TrollStore 真机安装并运行 | 待你的设备反馈 | IPA 校验不能代替实际安装 |
+| iPhone 编译与产物检查 | 1.0.1 已通过 | [Build IPA 成功记录](https://github.com/KBin-001/hide/actions/runs/42010959309)，源码提交 80ca22d；5 项核心测试、完整 UI 流程、arm64 真机编译、IPA 与签名校验通过 |
+| TrollStore 真机安装并运行 | 旧版能安装但启动失败；1.0.1 待真机复验 | 模拟器启动不能代替 iOS 16.3 真机验收 |
 | 个人授权、隐藏、恢复、上锁 | 待你的设备反馈 | entitlement 存在不能代替系统授权或限制效果 |
 
 Actions 对**解压后的实际 IPA**检查：唯一 `Payload/*.app`、显示名和固定 ID、Info.plist 最低系统 16.0、iPhoneOS 平台/iPhone 设备族、arm64 架构、Mach-O iOS 平台及最低版本、codesign 完整性、签名内 Family Controls/Keychain entitlement 和无额外权限。检查失败不上传成功产物。验证报告仍把安装、授权、隐藏效果标为待真机验证。
@@ -77,7 +79,7 @@ TrollStore 也不是支持所有 iOS 16 小版本；按其官方说明，支持�
 
 ## 开发与文档
 
-- 核心对外行为测试：`swift test`（工作流自动执行）；覆盖 App 隔离、隐藏恢复、删除选择、持久化加载、限制数量、写入失败和计算器行为。系统服务、Keychain 和生命周期集成需要真机验收。
+- 核心对外行为测试：`swift test`（工作流自动执行）；覆盖 App 隔离、隐藏恢复、删除选择、持久化加载、限制数量、写入失败和计算器行为。新增 XCTest UI 流程通过云端模拟器打开实际 App，验证 PIN 设置、普通计算、管理入口和后台返回，并保存截图与 xcresult；模拟器不验收 Family Controls 授权或 TrollStore 行为。
 - macOS 手动重现：`brew install xcodegen`，`python3 scripts/generate_icon.py`，`xcodegen generate`，`swift test`，`bash scripts/build_ipa.sh`。
 - 原创图标由仓库内纯 Python 脚本绘制，PNG 与 asset catalog 已随项目提供；Actions 会重新生成，无外部图像依赖。
 - 规格：`docs/SPEC.md`；本地逐票工单：`.scratch/calculator/issues/`；验收记录：`docs/VALIDATION.md`。尚未创建或发布远程 issue；以后需要配置 tracker 可运行 `/setup-matt-pocock-skills`。

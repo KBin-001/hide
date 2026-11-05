@@ -13,7 +13,18 @@
 
 这些本地检查不等于 Swift 编译或系统能力验收；远程编译与测试证据如下。
 
-## GitHub Actions 已通过
+## 1.0.1 最新验证
+
+[成功运行 42010959309](https://github.com/KBin-001/hide/actions/runs/42010959309)，源码提交 80ca22d，1.0.1 build 2。
+
+- 5 项核心测试通过，0 failures。
+- iPhone 16 Pro / iOS 18.5 模拟器，使用真实 Keychain 与 ad-hoc 签名，无 PIN 绕过或存储替身。UI 测试 31.274 秒、0 failures：首次启动显示设置页 → 保存随机测试 PIN → 7+3=10 → 输入 PIN 进入管理页 → Home → 回到计算器。
+- 已查看测试导出的 PNG：显示完整计算器与结果 0。Launch-Test-Evidence artifact 保留截图和 xcresult。
+- 真机 arm64 Release 编译及所有 IPA 检查通过，Family Controls entitlement 保留。
+- Calculator-TrollStore artifact 已上传，保留至 2026-11-08 18:35（北京时间）。
+- iPhone 13 Pro / iOS 16.3 的重新覆盖安装与启动、系统个人授权、真实 App 隐藏/恢复仍待用户反馈。模拟器未测试这些系统权限能力。
+
+## 1.0.0 历史编译记录（不表示启动成功）
 
 - [成功运行 42002897182](https://github.com/KBin-001/hide/actions/runs/42002897182)，源代码提交 8ef48f7；macos-15-arm64、Xcode 16.4、Swift 6.1.2、iPhoneOS SDK 18.5。
 - XcodeGen 生成工程与 Xcode arm64 真机 Release 编译通过。
@@ -25,9 +36,17 @@
 
 首次运行 42001910481 的五项测试与编译同样通过，但 IPA 设备族校验失败。根因是 XcodeGen 目标级 iOS 默认设备族覆盖了项目级 TARGETED_DEVICE_FAMILY。现已将仅 iPhone 设置移到目标级；保留原有严格 IPA 校验，新运行完整通过。没有删去校验绕过错误。
 
+## 真机失败反馈与修复候选
+
+用户反馈：iPhone 13 Pro，iOS 16.3，TrollStore 安装后能打开，但黑底显示中央 +/−，约 15 秒后退出。由此仅确认安装完成、启动失败，旧版不满足真机验收。未获取系统 .ips 崩溃报告，不能确定退出是否为 watchdog。
+
+1.0.1（build 2）候选改动：移除启动和前台回调中的同步 Family Controls 查询；管理服务延迟至 PIN 解锁且由授权按钮显式连接；Keychain 初次查询移至后台；Info.plist 显式声明 SwiftUI 场景生命周期；计算求值复用固定版本 MIT Expression。增加实际模拟器 UI 启动测试，禁止只凭 swift test 和 IPA 校验判断可启动。
+
+首次旧代码模拟器诊断运行因云端模拟器及 Xcode 启动耗时被取消，未执行到 App 断言；这不构成重现真机黑屏的证据。后续候选在模拟器显示 Keychain -34018 错误：测试脚本关闭了签名，现改为 ad-hoc 签名保留 Keychain entitlement；另一次 Intel runner 在模拟器初始化/构建超时，未执行 App 断言。最终使用标准 macos-15、与 Xcode SDK 匹配的 iOS 18.5 运行时，完整流程通过。额外诊断任务已停止，交付的是完整 Build IPA 工作流通过的产物。
+
 ## 等待用户真机反馈
 
-- TrollStore 安装和启动（具体设备、iOS 完整版本、TrollStore 版本）。
+- TrollStore 安装已由用户确认；1.0.1 的真机启动待再次验证（设备 iPhone 13 Pro / iOS 16.3）。
 - Keychain 首次设置、覆盖更新后的 PIN 保留、错误读取时的提示。
 - Family Controls 个人授权是否成功；失败时复制管理页诊断。
 - 单第三方 App 隐藏→桌面图标消失/阻止启动→正常→图标恢复/可启动。

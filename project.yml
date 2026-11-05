@@ -28,6 +28,7 @@ targets:
     sources:
       - path: Sources
       - path: Resources/Assets.xcassets
+      - path: Resources/ThirdPartyNotices.txt
   CalculatorUITests:
     type: bundle.ui-testing
     platform: iOS

@@ -54,13 +54,10 @@ struct CalculatorEngine {
     }
 
     private func evaluate(_ lhs: Double, _ op: String, _ rhs: Double) -> Double {
-        switch op {
-        case "+": return lhs + rhs
-        case "−": return lhs - rhs
-        case "×": return lhs * rhs
-        case "÷": return rhs == 0 ? .nan : lhs / rhs
-        default: return rhs
-        }
+        let symbols = ["+": "+", "−": "-", "×": "*", "÷": "/"]
+        guard let symbol = symbols[op] else { return rhs }
+        // Vendored Nick Lockwood Expression, MIT. Never interpolate PIN/input text.
+        return (try? NumericExpression("lhs \(symbol) rhs", constants: ["lhs": lhs, "rhs": rhs]).evaluate()) ?? .nan
     }
     private func format(_ value: Double) -> String {
         guard value.isFinite else { return "错误" }

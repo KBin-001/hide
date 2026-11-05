@@ -7,10 +7,10 @@ struct CalculatorApp: App {
 
 struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
-    @StateObject private var manager = AppManager()
     @State private var calculator = CalculatorEngine()
     @State private var needsPIN = false
     @State private var keychainReady = false
+    @State private var keychainLoading = false
     @State private var managing = false
     @State private var error: String?
 
@@ -20,8 +20,9 @@ struct RootView: View {
             if !keychainReady {
                 VStack(spacing: 20) {
                     Text("计算器").font(.largeTitle)
-                    Text("正在读取安全设置")
-                    Button("重试") { checkPIN() }
+                    ProgressView()
+                    Text("正在读取 Keychain 安全设置")
+                    Button("重试") { Task { await checkPIN() } }.disabled(keychainLoading)
                 }
             } else if needsPIN {
                 PINSetupView {
@@ -29,29 +30,34 @@ struct RootView: View {
                     calculator.clear()
                 }
             } else if managing {
-                ManagementView(manager: manager) {
+                ManagementContainer {
                     managing = false
                     calculator.clear()
                 }
             } else {
                 CalculatorView(engine: calculator, press: press)
             }
-            if scenePhase != .active {
+            if scenePhase == .background || (scenePhase == .inactive && keychainReady) {
                 Color.black.ignoresSafeArea()
                 Image(systemName: "plus.forwardslash.minus").font(.system(size: 64)).foregroundStyle(.gray)
             }
         }
-        .task { checkPIN() }
+        .task { await checkPIN() }
         .onChange(of: scenePhase) { phase in
             if phase == .background { managing = false; calculator.clear() }
-            if phase == .active { manager.refreshAuthorization() }
         }
         .alert("安全存储", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
             Button("好") { error = nil }
         } message: { Text(error ?? "") }
     }
-    private func checkPIN() {
-        do { needsPIN = try !PINStore.exists(); keychainReady = true }
+    @MainActor private func checkPIN() async {
+        guard !keychainLoading else { return }
+        keychainLoading = true
+        defer { keychainLoading = false }
+        do {
+            let exists = try await Task.detached(priority: .userInitiated) { try PINStore.exists() }.value
+            needsPIN = !exists; keychainReady = true
+        }
         catch { self.error = error.localizedDescription; keychainReady = false }
     }
     private func press(_ key: String) {

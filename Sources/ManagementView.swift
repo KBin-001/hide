@@ -2,6 +2,12 @@ import SwiftUI
 import FamilyControls
 import ManagedSettings
 
+struct ManagementContainer: View {
+    @StateObject private var manager = AppManager()
+    let exit: () -> Void
+    var body: some View { ManagementView(manager: manager, exit: exit) }
+}
+
 struct ManagementView: View {
     @ObservedObject var manager: AppManager
     let exit: () -> Void
@@ -67,7 +73,6 @@ struct ManagementView: View {
             .confirmationDialog("撤销本工具施加的全部限制并返回计算器？", isPresented: $confirmRestore, titleVisibility: .visible) {
                 Button("恢复全部并退出", role: .destructive) { if manager.restoreAll() { exit() } }
             }
-            .onAppear { manager.refreshAuthorization() }
         }
     }
 }

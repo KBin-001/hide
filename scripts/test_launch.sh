@@ -22,5 +22,7 @@ xcrun simctl bootstatus "$device_id" -b
 trap 'xcrun xcresulttool export attachments --path build/ui-results.xcresult --output-path build/ui-attachments || true' EXIT
 xcodebuild test -project Calculator.xcodeproj -scheme Calculator \
   -destination "platform=iOS Simulator,id=$device_id" -parallel-testing-enabled NO \
+  -test-timeouts-enabled YES -default-test-execution-time-allowance 120 \
+  -maximum-test-execution-time-allowance 150 \
   -derivedDataPath build/UITestDerivedData -resultBundlePath build/ui-results.xcresult \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO

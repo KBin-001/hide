@@ -5,6 +5,7 @@ final class LaunchTests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchEnvironment["CALCULATOR_TEST_SLOW_MANAGED_SETTINGS"] = "1"
+        app.launchArguments += ["-family-controls.previous-approval", "YES"]
         app.launch()
         defer {
             let screenshot = XCTAttachment(screenshot: app.screenshot())
@@ -34,6 +35,13 @@ final class LaunchTests: XCTestCase {
         app.terminate()
         app.launch()
         enterManagement(app, pin: pin)
+        let previousGrant = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@", "此前已授权，待确认")).firstMatch
+        XCTAssertTrue(previousGrant.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["连接系统授权"].isEnabled,
+                      "Previous approval must leave the cold-launch connection available for a manual attempt")
+        XCTAssertFalse(app.buttons["选择 App"].isEnabled,
+                       "A previous grant must not unlock app selection until iOS confirms it in this process")
 
         let restore = app.buttons["management.restore"]
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND enabled == true"), object: restore)

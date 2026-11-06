@@ -10,6 +10,7 @@ final class AppManager: ObservableObject {
     @Published private(set) var diagnostic = "在此查看 App 限制提交结果。"
     @Published private(set) var authorizationIssue: String?
     @Published private(set) var requestOutstanding = false
+    @Published private(set) var authorizationTimedOut = false
     @Published private(set) var authorizationStageText = "尚未连接系统服务"
     @Published private(set) var storageHealthy = true
     @Published private(set) var policyReady = false
@@ -18,7 +19,6 @@ final class AppManager: ObservableObject {
     private let policyWorker = AppPolicyWorker()
     private let authorizationProbe = AuthorizationProbe()
     private let approvalKey = "family-controls.previous-approval"
-    private var checkedOnEntry = false
     private var authorizationObservation: AnyCancellable?
 
     var selection: FamilyActivitySelection {
@@ -31,25 +31,28 @@ final class AppManager: ObservableObject {
         switch authorization {
         case .approved: return "已授权"
         case .denied: return "已拒绝"
-        case .notDetermined: return "未读取 / 尚未决定"
+        case .notDetermined: return previouslyApproved ? "此前已授权，待确认" : "未连接"
         @unknown default: return "未知状态"
         }
     }
-    func resumeAuthorizationIfNeeded() {
-        guard policyReady, !checkedOnEntry else { return }
-        checkedOnEntry = true
-        // A saved selection from older builds also indicates prior approval.
-        let previousApproval = UserDefaults.standard.object(forKey: approvalKey) as? Bool ?? !entries.isEmpty
-        if previousApproval { requestAuthorization(refreshing: true) }
+    private var previouslyApproved: Bool {
+        let defaults = UserDefaults.standard
+        // Older builds may only have a saved selection as evidence of a previous grant.
+        if defaults.object(forKey: approvalKey) == nil { return !entries.isEmpty }
+        return defaults.bool(forKey: approvalKey)
     }
 
-    func requestAuthorization(refreshing: Bool = false) {
+    func requestAuthorization() {
         guard !authorizationProbe.isPending else { return }
+        guard UIApplication.shared.applicationState == .active else {
+            authorizationIssue = "请在计算器回到前台后再连接系统授权。"
+            return
+        }
         let attempt = String(UUID().uuidString.prefix(8))
         let log = DiagnosticLog.shared
-        let trigger = refreshing ? "management_entry" : "manual"
         authorizationIssue = nil
-        log.record("auth.\(attempt) started trigger=\(trigger) app_state=\(UIApplication.shared.applicationState.rawValue) protected_data_available=\(UIApplication.shared.isProtectedDataAvailable)")
+        authorizationTimedOut = false
+        log.record("auth.\(attempt) started trigger=manual previous_approval=\(previouslyApproved) protected_data_available=\(UIApplication.shared.isProtectedDataAvailable)")
         authorizationProbe.onEvent = { [weak self] event in
             guard let self else { return }
             switch event {
@@ -58,17 +61,15 @@ final class AppManager: ObservableObject {
                 self.authorizationStageText = stage.rawValue
             case .timedOut(let stage):
                 log.record("auth.\(attempt) deadline.exceeded limit_s=30 stage=\(stage)")
-                self.authorizationStageText = "等待超时：\(stage.rawValue)"
-                self.authorizationIssue = "等待 30 秒后系统仍未返回。可以退出管理页；系统返回后会更新状态。若一直卡住，请导出诊断日志。"
+                self.authorizationTimedOut = true
+                self.authorizationIssue = "\(stage.rawValue)已等待 30 秒。若系统仍未返回，请先导出日志，再从 App 切换器关闭计算器，重新打开后手动连接。"
             case .failed(let error):
                 log.record("auth.\(attempt) ui.error domain=\((error as NSError).domain) code=\((error as NSError).code)")
                 self.requestOutstanding = false
-                self.authorizationStageText = "系统返回错误"
                 self.authorizationIssue = "个人授权失败\n" + self.describe(error)
             case .completed(let outcome):
                 log.record("auth.\(attempt) ui.completed outcome=\(outcome)")
                 self.requestOutstanding = false
-                self.authorizationStageText = "系统已返回"
                 self.authorizationIssue = nil
             }
         }

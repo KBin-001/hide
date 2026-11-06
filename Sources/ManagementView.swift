@@ -41,10 +41,12 @@ struct ManagementView: View {
                         Image(systemName: manager.approved ? "checkmark.shield.fill" : "shield")
                             .foregroundStyle(manager.approved ? Color.teal : Color.secondary)
                     }
-                    if !manager.approved {
-                        Button(manager.requestOutstanding ? manager.authorizationStageText : "连接系统授权") {
-                            manager.requestAuthorization()
-                        }.disabled(manager.requestOutstanding)
+                    if manager.requestOutstanding {
+                        if !manager.authorizationTimedOut {
+                            ProgressView(manager.authorizationStageText)
+                        }
+                    } else if !manager.approved {
+                        Button("连接系统授权", action: manager.requestAuthorization)
                     }
                     if let issue = manager.authorizationIssue {
                         Text(issue).font(.footnote).foregroundStyle(.orange).textSelection(.enabled)
@@ -94,10 +96,7 @@ struct ManagementView: View {
             .listStyle(.insetGrouped)
             .tint(.teal)
             .onAppear { DiagnosticLog.shared.record("management.entered") }
-            .task(id: manager.policyReady) {
-                if manager.policyReady { manager.resumeAuthorizationIfNeeded() }
-                else { await manager.loadPolicy() }
-            }
+            .task { await manager.loadPolicy() }
             .task(id: restoreRequested) {
                 guard restoreRequested else { return }
                 let restored = await manager.restoreAll()

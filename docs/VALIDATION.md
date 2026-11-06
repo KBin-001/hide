@@ -59,6 +59,14 @@
 - 若再次有 `.ips`，保留同一构建的 IPA 和 `Calculator-Debug-Symbols` artifact。打包时校验了 dSYM 和 App Mach-O 的 UUID，系统共享缓存帧还需对应 iOS 构建的符号。
 - 滚动对照使用同一台 iPhone、同一组至少 15 条记录，并固定 iOS 字体和减少动态效果设置。管理页加载后，从列表顶部连续滑到底部再返回，重复三次，记录可感知停顿。再操作一次条目菜单、退出和导出。VoiceOver 检查一条备注名及其模式能否读出。设备可连接 Instruments 时，用 SwiftUI 和 Hangs 对比相同手势的记录。
 
+## 1.0.5 真机反馈与手动连接对照
+
+2026-11-06，iPhone 13 Pro / iOS 16.3。1.0.5 能进管理页，读到一条旧记录，恢复全部调用约 20 毫秒返回，随后可再次进管理页并导出日志。冷启动自动确认卡在 `center.shared.begin`，后续未出现 `center.shared.end` 或 `request.individual.begin`；同进程前后台切换也未解除等待。该记录无法确认本次授权状态。
+
+同份导出包含 1.0.4 的历史手动请求。该次 `shared` 约 4 毫秒返回，系统随后返回 `Approved`；提交一项 shield 和一项 blocked 后，立即读回为 0 / 0。这是独立于授权等待的限制生效问题。立即读回无法证明系统最终处理结果，但与当次可见且能启动的真机反馈一致。
+
+1.0.6 仅改变首次连接的触发与提示。冷启动后由前台点按触发，已保存授权仅提示此前状态。框架调用、签名和策略保持相同，便于对照。若手动连接仍停在共享实例初始化，优先收集系统服务证据，不把延长等待或模拟授权当成修复。[Apple 授权接口](https://developer.apple.com/documentation/familycontrols/authorizationcenter/requestauthorization%28for%3A%29)
+
 ## 编译耗时样本
 
 依据下列 1.0.1 成功运行的 Actions 时间戳：真机 xcodebuild 约 49 秒；含签名、打包、IPA 校验的步骤约 54 秒；从 checkout 到产物上传约 447 秒（7 分 27 秒）。其中模拟器准备、构建与 UI 验证步骤约 337 秒，UI 用例本身约 31 秒。排队时间另计，这些是实测样本而非固定时长保证。

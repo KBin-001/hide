@@ -25,6 +25,12 @@
 
 用户随后提供 1.0.2 真机截图：30 秒超时停在“初始化系统授权中心”，状态始终未读取，没有系统授权弹窗。该进度对应 AuthorizationCenter.shared 尚未返回，尚未进入 requestAuthorization(for: .individual)。因此不能把延长授权等待、反复点击或放开选择器当作修复。公开资料尚未给出足以证明本设备根因的依据；需要初始化时刻的设备实时日志，区分系统服务等待、签名/应用身份及其他初始化问题。Windows 侧尚未检测到 USB iPhone，已询问用户是否可连接并信任电脑。下一步使用独立的开源 pymobiledevice3 工具抓取相关日志；工具不进入 App 或 IPA。
 
+## 1.0.3 真机日志
+
+2026-11-06，iPhone 13 Pro / iOS 16.3（20D47）。1.0.3 build 4 成功进入管理页并导出文本。安装后二进制的签名 XML 中 `family_controls=true`，存在 DER 槽位，应用身份为 `TROLLTROLL.com.personal.calculatorvault`，包内无 `embedded.mobileprovision`。
+
+手机处于前台且受保护数据可用。点击授权后工作线程立即写入 `center.shared.begin`，约 32 秒后主线程记录超时，随后仍能操作导出。日志缺少 `center.shared.end` 和 `request.individual.begin`，当前证据定位到共享实例的访问。具体阻塞原因待确认，包括设备端服务状态与安装身份的影响。下一项对照是在同一台设备上用 App Store 安装、支持 iOS 16 的屏幕使用时间应用触发个人授权，观察是否出现系统弹窗或可进入 App 选择器。[Apple AuthorizationCenter 文档](https://developer.apple.com/documentation/familycontrols/authorizationcenter) · [Jomo 兼容性](https://apps.apple.com/cn/app/jomo-screen-time-blocker/id1609960918)
+
 ## 编译耗时样本
 
 依据下列 1.0.1 成功运行的 Actions 时间戳：真机 xcodebuild 约 49 秒；含签名、打包、IPA 校验的步骤约 54 秒；从 checkout 到产物上传约 447 秒（7 分 27 秒）。其中模拟器准备、构建与 UI 验证步骤约 337 秒，UI 用例本身约 31 秒。排队时间另计，这些是实测样本而非固定时长保证。

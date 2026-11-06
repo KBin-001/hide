@@ -6,6 +6,7 @@ final class AppPolicyWorker: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.personal.calculatorvault.policy", qos: .userInitiated)
     private lazy var defaultStore = ManagedSettingsStore()
     private lazy var legacyStore = ManagedSettingsStore(named: .init("calculator-vault-v1"))
+    private lazy var qqProbeStore = ManagedSettingsStore(named: .init("calculator-qq-id-probe"))
     private var restrictionWriteVerified: Bool?
     #if DEBUG && targetEnvironment(simulator)
     private var simulatedStall = false
@@ -44,18 +45,52 @@ final class AppPolicyWorker: @unchecked Sendable {
         _ desired: Set<Value>, at keyPath: ReferenceWritableKeyPath<ManagedSettingsStore, Set<Value>?>, name: String
     ) -> Bool {
         RestrictionStoreRouting.submit(desired) { location, values in
-            let log = DiagnosticLog.shared
-            log.record("policy.write.begin kind=\(name) store=\(location.rawValue) requested=\(values.count)")
-            let store = location == .defaultStore ? defaultStore : legacyStore
-            store[keyPath: keyPath] = values.isEmpty ? nil : values
-            var stored = store[keyPath: keyPath] ?? []
-            if stored != values {
-                Thread.sleep(forTimeInterval: 0.3)
-                stored = store[keyPath: keyPath] ?? []
+            write(values, at: keyPath, name: name, location: location.rawValue,
+                  store: location == .defaultStore ? defaultStore : legacyStore)
+        }
+    }
+
+    private func write<Value: Hashable>(
+        _ values: Set<Value>, at keyPath: ReferenceWritableKeyPath<ManagedSettingsStore, Set<Value>?>,
+        name: String, location: String, store: @autoclosure () -> ManagedSettingsStore
+    ) -> Bool {
+        let log = DiagnosticLog.shared
+        log.record("policy.write.begin kind=\(name) store=\(location) requested=\(values.count)")
+        let target = store()
+        target[keyPath: keyPath] = values.isEmpty ? nil : values
+        var stored = target[keyPath: keyPath] ?? []
+        if stored != values {
+            Thread.sleep(forTimeInterval: 0.3)
+            stored = target[keyPath: keyPath] ?? []
+        }
+        let matches = stored == values
+        log.record("policy.write.end kind=\(name) store=\(location) readback=\(stored.count) matches=\(matches)")
+        return matches
+    }
+
+    private func writeQQProbe(hide: Bool) -> Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        if ProcessInfo.processInfo.environment["CALCULATOR_TEST_SLOW_MANAGED_SETTINGS"] == "1" { return true }
+        #endif
+        let apps: Set<Application> = hide ? [Application(bundleIdentifier: "com.tencent.mqq")] : []
+        return write(apps, at: \.application.blockedApplications, name: "blocked.bundle_id",
+                     location: "qqProbe", store: qqProbeStore)
+    }
+
+    func setQQProbe(hide: Bool) async -> Update {
+        await run { [self] _ in
+            restrictionWriteVerified = writeQQProbe(hide: hide)
+        }
+    }
+
+    func restoreAll() async -> Update {
+        await run { [self] policy in
+            defer {
+                let existingMatches = restrictionWriteVerified ?? true
+                let probeCleared = writeQQProbe(hide: false)
+                restrictionWriteVerified = existingMatches && probeCleared
             }
-            let matches = stored == values
-            log.record("policy.write.end kind=\(name) store=\(location.rawValue) readback=\(stored.count) matches=\(matches)")
-            return matches
+            try policy.restoreAll()
         }
     }
 

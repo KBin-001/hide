@@ -64,6 +64,10 @@ struct ManagementView: View {
                         .accessibilityIdentifier("management.restore")
                     DisclosureGroup("诊断") {
                         Text(manager.diagnostic).font(.footnote).textSelection(.enabled)
+                        Button("测试隐藏 QQ（Bundle ID）") { Task { await manager.setQQProbe(hide: true) } }
+                            .disabled(!manager.approved || !manager.policyReady || manager.policyBusy)
+                        Button("结束 QQ 测试并恢复") { Task { await manager.setQQProbe(hide: false) } }
+                            .disabled(!manager.policyReady || manager.policyBusy)
                         Button("导出诊断日志", action: exportDiagnostics).disabled(preparingExport)
                     }
                     if let issue = manager.policyIssue, !manager.policyBusy {

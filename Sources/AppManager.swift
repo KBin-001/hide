@@ -136,33 +136,45 @@ final class AppManager: ObservableObject {
     }
     func loadPolicy() async {
         guard !policyReady else { return }
-        await perform("load", message: "已读取本地管理记录。") { _ in }
+        await perform("load", message: "已读取本地管理记录。") { await policyWorker.run { _ in } }
     }
 
     func select(_ value: FamilyActivitySelection) async {
         guard approved else { diagnostic = "请先获得个人授权。"; return }
         let tokens = value.applicationTokens
-        await perform("select", message: "已保存所选 App。") { try $0.select(tokens) }
+        await perform("select", message: "已保存所选 App。") {
+            await policyWorker.run { try $0.select(tokens) }
+        }
     }
 
     func setMode(_ mode: AppMode, id: UUID) async {
         guard approved || mode == .normal else { diagnostic = "系统未授权，无法提交限制。"; return }
         await perform("mode.\(mode.rawValue)", message: "已向系统提交「\(mode.title)」请求。") {
-            try $0.setMode(mode, id: id)
+            await policyWorker.run { try $0.setMode(mode, id: id) }
         }
     }
 
     func rename(_ nickname: String, id: UUID) async {
-        await perform("rename", message: "已保存备注名称。") { try $0.rename(nickname, id: id) }
+        await perform("rename", message: "已保存备注名称。") {
+            await policyWorker.run { try $0.rename(nickname, id: id) }
+        }
+    }
+
+    func setQQProbe(hide: Bool) async {
+        guard approved || !hide else { return }
+        let message = hide ? "已读回 QQ 的隐藏测试设置。请到桌面或搜索中确认效果。" : "已清除 QQ 的隐藏测试设置。"
+        await perform(hide ? "qq_probe.hide" : "qq_probe.restore", message: message) {
+            await policyWorker.setQQProbe(hide: hide)
+        }
     }
 
     func restoreAll() async -> Bool {
-        await perform("restore", message: "已请求解除本工具施加的全部限制。") { try $0.restoreAll() }
+        await perform("restore", message: "已请求解除本工具施加的全部限制。") { await policyWorker.restoreAll() }
     }
 
     @discardableResult
     private func perform(_ operation: String, message: String,
-                         work: @escaping @Sendable (PolicyController<ApplicationToken>) throws -> Void) async -> Bool {
+                         work: () async -> AppPolicyWorker.Update) async -> Bool {
         guard !policyBusy else { return false }
         let log = DiagnosticLog.shared
         policyBusy = true
@@ -174,7 +186,7 @@ final class AppManager: ObservableObject {
             policyTimedOut = true
             log.record("policy.operation.slow kind=\(operation)")
         }
-        let update = await policyWorker.run(work)
+        let update = await work()
         deadline.cancel()
         entries = update.entries
         storageHealthy = update.storageError == nil

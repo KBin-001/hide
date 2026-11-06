@@ -89,6 +89,16 @@
 
 1.0.8 根据安装后的签名做预检，确认缺少 Family Controls 时先显示具体原因。签名读取结果不明确时交由 iOS 判断。CI 改用 iOS 26.4 模拟器，工程保留 iOS 16.0 的部署下限。授权、上锁和隐藏仍需在 iPhone 15 Pro 上使用包含 Family Controls 的 Apple 开发签名逐项验证。Apple 的能力表仅在 Apple Developer Program 栏为 Family Controls 开发能力标注支持。[Apple 支持的能力](https://developer.apple.com/help/account/reference/supported-capabilities-ios)
 
+## iOS 16.3 的限制写入失败已在系统日志确认
+
+2026-11-07 北京时间 00:22:03 采集的系统诊断与 1.0.7 App 日志对齐。00:21:30 个人授权返回 `Approved`，00:21:35 从空列表新选一个 App，随后分别提交隐藏、上锁和隐藏。00:21:48 的上锁只提交一个 `shield.applications` token。默认和旧命名 store 都读回 0，00:21:38 和 00:21:50 的隐藏也在两处分别读回 0。
+
+每次非空写入，系统的 `ManagedSettingsAgent` 都记录 `Failed to detokenize … authenticationFailure`，计算器进程对应记录 `CryptoKit.CryptoKitError Code=3`。失败发生在系统验证选择器提供的 token 时，复现使用的是本次授权后刚选的新 token。日志还显示 ManagedSettings 查找 `TROLLTROLL` 身份的既有记录未找到，但该行不能证明密码学失败的根因。两个 store 的表现一致。系统归档和过滤结果仅在本地忽略目录保留。
+
+同机已确认 Jomo 能弹出授权，实际用它上锁同一个 QQ 仍可作为签名与安装路径的对照。若继续做代码实验，公开的 `Application(bundleIdentifier:)` 可以单独对照 `blockedApplications` 的隐藏路径。`shield.applications` 仍需要 `ApplicationToken`，应独立追踪。[Apple 应用标识初始化器](https://developer.apple.com/documentation/managedsettings/application/init%28bundleidentifier%3A%29) · [Apple ShieldSettings](https://developer.apple.com/documentation/managedsettings/shieldsettings)
+
+1.0.9 加入单目标对照。在原 iPhone 13 Pro 上先把原 QQ 条目切到「正常」，验证 QQ 能打开。获得系统授权后，在「诊断」点「测试隐藏 QQ（Bundle ID）」。它用 Apple App Store 元数据核实的 QQ 标识 `com.tencent.mqq`，只在独立诊断 store 写入 `blockedApplications`，以隔离之前报错的 token。检查桌面、系统搜索和实际启动。回计算器点「结束 QQ 测试并恢复」，也可用「恢复全部并退出」。导出的日志在 `kind=blocked.bundle_id` 下记录两次读回。只有真机能验证隐藏效果。
+
 ## 编译耗时样本
 
 依据下列 1.0.1 成功运行的 Actions 时间戳：真机 xcodebuild 约 49 秒；含签名、打包、IPA 校验的步骤约 54 秒；从 checkout 到产物上传约 447 秒（7 分 27 秒）。其中模拟器准备、构建与 UI 验证步骤约 337 秒，UI 用例本身约 31 秒。排队时间另计，这些是实测样本而非固定时长保证。

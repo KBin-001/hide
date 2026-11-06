@@ -45,7 +45,7 @@ struct ManagementView: View {
                         if !manager.authorizationTimedOut {
                             ProgressView(manager.authorizationStageText)
                         }
-                    } else if !manager.approved {
+                    } else if !manager.approved && !manager.authorizationSignatureMissing {
                         Button("连接系统授权", action: manager.requestAuthorization)
                     }
                     if let issue = manager.authorizationIssue {

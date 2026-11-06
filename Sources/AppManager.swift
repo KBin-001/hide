@@ -11,6 +11,7 @@ final class AppManager: ObservableObject {
     @Published private(set) var authorizationIssue: String?
     @Published private(set) var requestOutstanding = false
     @Published private(set) var authorizationTimedOut = false
+    @Published private(set) var authorizationSignatureMissing = false
     @Published private(set) var authorizationStageText = "尚未连接系统服务"
     @Published private(set) var storageHealthy = true
     @Published private(set) var policyReady = false
@@ -29,6 +30,7 @@ final class AppManager: ObservableObject {
     }
     var approved: Bool { authorization == .approved }
     var authorizationText: String {
+        if authorizationSignatureMissing { return "签名缺少权限" }
         switch authorization {
         case .approved: return "已授权"
         case .denied: return "已拒绝"
@@ -44,7 +46,7 @@ final class AppManager: ObservableObject {
     }
 
     func requestAuthorization() {
-        guard !authorizationProbe.isPending else { return }
+        guard !authorizationProbe.isPending, !authorizationSignatureMissing else { return }
         guard UIApplication.shared.applicationState == .active else {
             authorizationIssue = "请在计算器回到前台后再连接系统授权。"
             return
@@ -67,7 +69,12 @@ final class AppManager: ObservableObject {
             case .failed(let error):
                 log.record("auth.\(attempt) ui.error domain=\((error as NSError).domain) code=\((error as NSError).code)")
                 self.requestOutstanding = false
-                self.authorizationIssue = "个人授权失败\n" + self.describe(error)
+                if error is AuthorizationSigningError {
+                    self.authorizationSignatureMissing = true
+                    self.authorizationIssue = "当前安装的签名缺少 Family Controls 权限。需要使用已为此 App ID 开启 Family Controls 的 Apple 开发签名。"
+                } else {
+                    self.authorizationIssue = "个人授权失败\n" + self.describe(error)
+                }
             case .completed(let outcome):
                 log.record("auth.\(attempt) ui.completed outcome=\(outcome)")
                 self.requestOutstanding = false
@@ -76,6 +83,9 @@ final class AppManager: ObservableObject {
         }
         authorizationProbe.start { [weak self] report in
             log.record("auth.\(attempt) worker.started")
+            let signingState = InstalledSignature.current.familyControls
+            log.record("auth.\(attempt) signing.check family_controls=\(signingState.rawValue)")
+            guard signingState != .missing else { throw AuthorizationSigningError.missingFamilyControls }
             report(.initializing)
             log.record("auth.\(attempt) center.shared.begin")
             let center = AuthorizationCenter.shared
@@ -194,4 +204,8 @@ final class AppManager: ObservableObject {
         }
         return text + "\niOS \(UIDevice.current.systemVersion) · \(Bundle.main.bundleIdentifier ?? "unknown")"
     }
+}
+
+private enum AuthorizationSigningError: Error {
+    case missingFamilyControls
 }

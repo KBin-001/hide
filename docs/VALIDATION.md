@@ -73,6 +73,22 @@
 
 1.0.7 优先向应用自己的默认存储提交同一条设置，读回不匹配时对照旧命名存储，并只在确认迁移后清除另一处的同类设置。正常和恢复操作清理两处，命名和默认写入均在原独立队列中。日志分别显示 `kind=shield/blocked` 与 `store=defaultStore/legacy`，仅记录数量及匹配结果。真机先测 QQ 上锁，恢复正常后再测隐藏。若两个存储都读回为空，下一步应收集 iOS 系统服务日志或同设备使用 Apple 正常签名应用作对照。若仅隐藏失败，再单独对比已核实 Bundle ID 和 token 两种初始化方式。[Apple 存储名称说明](https://developer.apple.com/documentation/managedsettings/managedsettingsstore/name)
 
+1.0.7 首次真机日志于 2026-11-06 18:06–18:07（北京时间）导出。安装后签名仍报告 Family Controls entitlement，管理记录读取成功且有 0 项。手动连接到 `center.shared.begin` 后约 32 秒超时，导出时仍没有 `center.shared.end` 或 `request.individual.begin`。此次没有限制写入，默认与旧命名存储对照尚未运行。与 1.0.6 成功会话相比，授权实现和签名配置相同，现有日志不足以解释间歇差异。下一次使用同一 IPA，完全关闭进程后重试一次；若仍卡住，优先收集同机对照或复现时间段的系统日志。
+
+同机对照已完成授权弹窗这一步。用户彻底关闭并重开计算器后，1.0.7 仍卡在授权；App Store 安装的 Jomo 进入相应页面即可弹出授权。该对照表明设备能为另一应用呈现授权，缩小范围至计算器的调用、应用身份或安装环境。Jomo 实际上锁效果和 TrollStore 路径的失败原因仍待验证。下一步采集一次授权复现期间的设备系统日志，核对 Screen Time 服务有无连接或授权拒绝记录。
+
+## 另一台设备的 LiveContainer 对照
+
+2026-11-06，北京时间。经 Windows USB 直接读取，设备为 iPhone 15 Pro（iPhone16,1）、iOS 26.4.2（23E261），已配对且启用开发者模式。手机安装记录显示 LiveContainer 3.8.0 为用户应用。系统返回的宿主权限没有 `com.apple.developer.family-controls`，计算器没有独立注册。LiveContainer 官方说明其宿主不会采用容器内 App 的权限。[LiveContainer 的权限限制](https://github.com/LiveContainer/LiveContainer#limitations)
+
+从当前画面和计算器 1.0.7 自有诊断日志确认，`AuthorizationCenter.shared` 约 2 毫秒返回，随后的 `requestAuthorization(for: .individual)` 约 4 毫秒返回 `NSCocoaErrorDomain 4099`。20:07 用户再次点按，直接读取到新请求同样返回 4099。这是 LiveContainer 宿主环境下的系统连接失败；该环境缺少验证 Family Controls 所需的权限。iOS 16.3 上的 TrollStore 记录是共享实例初始化超时，两者不能合并为同一次故障。界面读取与报错展示已在此设备验证。隐藏、上锁和实际授权仍以原设备的独立安装为验收路径。[TrollStore 支持范围](https://github.com/opa334/TrollStore#compatibility)
+
+## iOS 26.4.2 上的 SideStore 独立安装
+
+2026-11-06 20:20（北京时间），同一台 iPhone 15 Pro。通过 Windows USB 查询到独立注册的计算器 1.0.7。安装后 Bundle ID 被加上团队后缀。系统安装记录返回的权限字典中没有 `com.apple.developer.family-controls`，从计算器容器直接读取的诊断也显示 `provisioning_file=true`、`xml_entitlements=read`、`der_slot=true`、`family_controls=missing`。多次请求均完成授权中心初始化，并在调用个人授权后约 1 毫秒收到 `NSCocoaErrorDomain 4099`。
+
+1.0.8 根据安装后的签名做预检，确认缺少 Family Controls 时先显示具体原因。签名读取结果不明确时交由 iOS 判断。CI 改用 iOS 26.4 模拟器，工程保留 iOS 16.0 的部署下限。授权、上锁和隐藏仍需在 iPhone 15 Pro 上使用包含 Family Controls 的 Apple 开发签名逐项验证。Apple 的能力表仅在 Apple Developer Program 栏为 Family Controls 开发能力标注支持。[Apple 支持的能力](https://developer.apple.com/help/account/reference/supported-capabilities-ios)
+
 ## 编译耗时样本
 
 依据下列 1.0.1 成功运行的 Actions 时间戳：真机 xcodebuild 约 49 秒；含签名、打包、IPA 校验的步骤约 54 秒；从 checkout 到产物上传约 447 秒（7 分 27 秒）。其中模拟器准备、构建与 UI 验证步骤约 337 秒，UI 用例本身约 31 秒。排队时间另计，这些是实测样本而非固定时长保证。

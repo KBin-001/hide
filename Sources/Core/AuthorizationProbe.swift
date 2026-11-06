@@ -1,6 +1,7 @@
 import Foundation
 
 enum AuthorizationStage: String, Sendable {
+    case checkingSignature = "检查安装签名"
     case initializing = "初始化系统授权中心"
     case requesting = "等待系统授权与身份认证"
     case readingStatus = "读取系统授权结果"
@@ -21,14 +22,14 @@ final class AuthorizationProbe {
     typealias Work = @Sendable (@escaping @Sendable (AuthorizationStage) -> Void) async throws -> AuthorizationOutcome
     var onEvent: ((Event) -> Void)?
     private(set) var isPending = false
-    private var stage = AuthorizationStage.initializing
+    private var stage = AuthorizationStage.checkingSignature
     private var expired = false
     private var deadline: Task<Void, Never>?
 
     @discardableResult
     func start(timeoutNanoseconds: UInt64 = 30_000_000_000, work: @escaping Work) -> Bool {
         guard !isPending else { return false }
-        isPending = true; expired = false; stage = .initializing
+        isPending = true; expired = false; stage = .checkingSignature
         onEvent?(.progress(stage))
         deadline = Task { [weak self] in
             do { try await Task.sleep(nanoseconds: timeoutNanoseconds) }

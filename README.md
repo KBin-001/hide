@@ -2,6 +2,8 @@
 
 自用 Swift + SwiftUI iPhone App，最低 iOS 16.0。固定 Bundle ID：`com.personal.calculatorvault`。没有服务器、登录、统计、订阅或网络请求。
 
+当前优先验证 iPhone 15 Pro / iOS 26.4.2。CI 使用 Xcode 26.4.1 和 iOS 26.4 模拟器。该设备上，SideStore 独立安装保留了基本 App 签名，但安装后没有 Family Controls 权限。iOS 26 的授权和限制真机验收需要 Apple 开发签名，且 App ID 与设备所用描述文件均须包含 Family Controls 能力。用当前 TrollStore 打包流程生成的 IPA 可以用于历史 TrollStore 测试。[Apple 支持的能力](https://developer.apple.com/help/account/reference/supported-capabilities-ios) · [真机诊断](docs/VALIDATION.md)
+
 1.0.1：启动不再创建 Family Controls / ManagedSettings 对象，Keychain 查询在后台执行，并显式声明 SwiftUI 场景生命周期。计算部分复用 [Nick Lockwood Expression](https://github.com/nicklockwood/Expression)（MIT，固定源码版本并随包保留许可证）；本工具仅保留按键状态、PIN 入口和管理适配。旧版在 iPhone 13 Pro / iOS 16.3 已收到黑屏后退出的反馈；新版已通过 iOS 18.5 模拟器完整 UI 流程，iOS 16.3 真机仍需复验。
 
 1.0.3 已在 iPhone 13 Pro / iOS 16.3 上安装运行，曾在重开 App 后弹出系统授权并成功。该设备上选「隐藏」后仍能看到小红书。管理页的「导出诊断日志」可将调用时间线保存为文本文件。
@@ -53,7 +55,7 @@ Get-Content .\Calculator.ipa.sha256
 
 ## 先验收最小链路
 
-1. 管理页点击「连接系统授权」，完成系统认证，确认「屏幕使用时间」显示「已授权」。遇到失败时展开「诊断」，选择「导出诊断日志」。授权行也可以复制系统错误详情。
+1. 管理页点击「连接系统授权」，完成系统认证，确认「屏幕使用时间」显示「已授权」。如果显示「签名缺少权限」，当前已安装签名的 XML 权限里没有 Family Controls，须换用具备该权限的签名。其他失败可展开「诊断」，选择「导出诊断日志」。
 2. “选择 App”打开系统 FamilyActivityPicker，展开分类，只勾选一个非关键第三方 App，保存。只管理单个 App token；分类和网站不会施加限制。
 3. 先把这个 App 设为「正常」，再按「上锁 → 正常 → 隐藏 → 正常」验证。每一步都检查桌面、系统搜索和实际启动，分别记下是否出现系统限制页。[真机记录表](docs/VALIDATION.md)
 4. 回到计算器 → AC → PIN → =，将它改成“正常”。如果旧条目只有编号，可以在「选择 App」里取消勾选要恢复的具体 App，再保存。确认图标回来且能打开，再切过去使用。再次后台/重开后不应重新隐藏。

@@ -60,13 +60,8 @@ struct RootView: View {
         let info = bundle.infoDictionary ?? [:]
         let provisioning = bundle.url(forResource: "embedded", withExtension: "mobileprovision") != nil
         DiagnosticLog.shared.record("app.root_ready version=\(info["CFBundleShortVersionString"] ?? "unknown") build=\(info["CFBundleVersion"] ?? "unknown") bundle=\(bundle.bundleIdentifier ?? "unknown") os=\(ProcessInfo.processInfo.operatingSystemVersionString) sdk=\(info["DTSDKName"] ?? "unknown") min_os=\(info["MinimumOSVersion"] ?? "unknown") provisioning_file=\(provisioning)")
-        let executable = bundle.executableURL
         Task.detached(priority: .utility) {
-            guard let executable, let data = try? Data(contentsOf: executable, options: .mappedIfSafe) else {
-                DiagnosticLog.shared.record("app.installed_signature executable=unreadable")
-                return
-            }
-            DiagnosticLog.shared.record("app.installed_signature \(InstalledSignature.summary(of: data))")
+            DiagnosticLog.shared.record("app.installed_signature \(InstalledSignature.current.summary)")
         }
     }
     @MainActor private func checkPIN() async {

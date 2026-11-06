@@ -16,6 +16,7 @@ final class AppManager: ObservableObject {
     private let authorizationProbe = AuthorizationProbe()
 
     init() {
+        DiagnosticLog.shared.record("management.entered")
         let file = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("management-v1.json")
         policy = PolicyController(load: {
@@ -57,6 +58,9 @@ final class AppManager: ObservableObject {
     }
     func requestAuthorization() {
         guard !authorizationProbe.isPending else { return }
+        let attempt = String(UUID().uuidString.prefix(8))
+        let log = DiagnosticLog.shared
+        log.record("auth.\(attempt) clicked app_state=\(UIApplication.shared.applicationState.rawValue) protected_data_available=\(UIApplication.shared.isProtectedDataAvailable)")
         authorizationProbe.onEvent = { [weak self] event in
             guard let self else { return }
             switch event {
@@ -65,14 +69,17 @@ final class AppManager: ObservableObject {
                 self.authorizationStageText = stage.rawValue
                 self.diagnostic = "授权进行中：\(stage.rawValue)。等待上限 30 秒。"
             case .timedOut(let stage):
+                log.record("auth.\(attempt) deadline.exceeded limit_s=30 stage=\(stage)")
                 self.busy = false
                 self.authorizationStageText = "等待超时：\(stage.rawValue)"
                 self.diagnostic = "30 秒内系统未返回。阶段：\(stage.rawValue)。\n尚未获得授权，选择 App 仍不可用。系统没有返回 NSError，因此目前无法确定是系统服务还是安装签名身份导致。\n底层请求可能仍在运行，不会重复发起；迟到的结果会更新界面。可以退出管理页。请复制这段诊断反馈。"
             case .failed(let error):
+                log.record("auth.\(attempt) ui.error domain=\((error as NSError).domain) code=\((error as NSError).code)")
                 self.busy = false; self.requestOutstanding = false
                 self.authorizationStageText = "系统返回错误"
                 self.diagnostic = "个人授权失败\n" + self.describe(error)
             case .completed(let outcome):
+                log.record("auth.\(attempt) ui.completed outcome=\(outcome)")
                 self.busy = false; self.requestOutstanding = false
                 switch outcome {
                 case .approved: self.authorization = .approved
@@ -84,12 +91,30 @@ final class AppManager: ObservableObject {
             }
         }
         authorizationProbe.start { report in
+            log.record("auth.\(attempt) worker.started")
             report(.initializing)
+            log.record("auth.\(attempt) center.shared.begin")
             let center = AuthorizationCenter.shared
+            log.record("auth.\(attempt) center.shared.end")
             report(.requesting)
-            try await center.requestAuthorization(for: .individual)
+            log.record("auth.\(attempt) request.individual.begin")
+            do {
+                try await center.requestAuthorization(for: .individual)
+                log.record("auth.\(attempt) request.individual.end")
+            } catch {
+                var underlying: NSError? = error as NSError
+                for depth in 0..<4 {
+                    guard let current = underlying else { break }
+                    log.record("auth.\(attempt) request.error depth=\(depth) domain=\(current.domain) code=\(current.code)")
+                    underlying = current.userInfo[NSUnderlyingErrorKey] as? NSError
+                }
+                throw error
+            }
             report(.readingStatus)
-            switch center.authorizationStatus {
+            log.record("auth.\(attempt) status.read.begin")
+            let status = center.authorizationStatus
+            log.record("auth.\(attempt) status.read.end status=\(status)")
+            switch status {
             case .approved: return .approved
             case .denied: return .denied
             case .notDetermined: return .notDetermined

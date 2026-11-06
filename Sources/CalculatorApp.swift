@@ -42,13 +42,31 @@ struct RootView: View {
                 Image(systemName: "plus.forwardslash.minus").font(.system(size: 64)).foregroundStyle(.gray)
             }
         }
-        .task { await checkPIN() }
+        .task {
+            recordAppConfiguration()
+            await checkPIN()
+        }
         .onChange(of: scenePhase) { phase in
+            DiagnosticLog.shared.record("scene.phase=\(phase)")
             if phase == .background { managing = false; calculator.clear() }
         }
         .alert("安全存储", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
             Button("好") { error = nil }
         } message: { Text(error ?? "") }
+    }
+    @MainActor private func recordAppConfiguration() {
+        let bundle = Bundle.main
+        let info = bundle.infoDictionary ?? [:]
+        let provisioning = bundle.url(forResource: "embedded", withExtension: "mobileprovision") != nil
+        DiagnosticLog.shared.record("app.root_ready version=\(info["CFBundleShortVersionString"] ?? "unknown") build=\(info["CFBundleVersion"] ?? "unknown") bundle=\(bundle.bundleIdentifier ?? "unknown") os=\(ProcessInfo.processInfo.operatingSystemVersionString) sdk=\(info["DTSDKName"] ?? "unknown") min_os=\(info["MinimumOSVersion"] ?? "unknown") provisioning_file=\(provisioning)")
+        let executable = bundle.executableURL
+        Task.detached(priority: .utility) {
+            guard let executable, let data = try? Data(contentsOf: executable, options: .mappedIfSafe) else {
+                DiagnosticLog.shared.record("app.installed_signature executable=unreadable")
+                return
+            }
+            DiagnosticLog.shared.record("app.installed_signature \(InstalledSignature.summary(of: data))")
+        }
     }
     @MainActor private func checkPIN() async {
         guard !keychainLoading else { return }

@@ -1,6 +1,21 @@
 import SwiftUI
 import FamilyControls
 import ManagedSettings
+import UniformTypeIdentifiers
+
+private struct DiagnosticDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.plainText] }
+    let data: Data
+
+    init(data: Data) { self.data = data }
+    init(configuration: ReadConfiguration) throws {
+        guard let data = configuration.file.regularFileContents else { throw CocoaError(.fileReadCorruptFile) }
+        self.data = data
+    }
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
+    }
+}
 
 struct ManagementContainer: View {
     @StateObject private var manager = AppManager()
@@ -14,6 +29,10 @@ struct ManagementView: View {
     @State private var picking = false
     @State private var draft = FamilyActivitySelection()
     @State private var confirmRestore = false
+    @State private var exportDocument: DiagnosticDocument?
+    @State private var showingExporter = false
+    @State private var preparingExport = false
+    @State private var exportError = false
 
     var body: some View {
         NavigationStack {
@@ -27,6 +46,7 @@ struct ManagementView: View {
                     if manager.requestOutstanding && !manager.busy {
                         Text(manager.diagnostic).font(.footnote).foregroundStyle(.orange).textSelection(.enabled)
                     }
+                    Button("导出诊断日志", action: exportDiagnostics).disabled(preparingExport)
                     Text("授权入口和使用历史仍由 iOS 保留。IPA 签名中存在 entitlement 不代表授权成功。")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
@@ -61,7 +81,23 @@ struct ManagementView: View {
                 }
             }
             .navigationTitle("App 管理")
-            .toolbar { ToolbarItem(placement: .navigationBarTrailing) { Button("退出") { exit() } } }
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("退出") {
+                        DiagnosticLog.shared.record("management.exit_tapped")
+                        exit()
+                    }
+                }
+            }
+            .fileExporter(isPresented: $showingExporter, document: exportDocument,
+                          contentType: .plainText, defaultFilename: "Calculator-Authorization-Diagnostics") { result in
+                if case .failure = result { exportError = true }
+            }
+            .alert("日志导出失败", isPresented: $exportError) {
+                Button("好", role: .cancel) { }
+            } message: {
+                Text("请重新导出并选择一个可写入的文件夹。")
+            }
             .sheet(isPresented: $picking) {
                 NavigationStack {
                     FamilyActivityPicker(selection: $draft)
@@ -77,6 +113,16 @@ struct ManagementView: View {
             .confirmationDialog("撤销本工具施加的全部限制并返回计算器？", isPresented: $confirmRestore, titleVisibility: .visible) {
                 Button("恢复全部并退出", role: .destructive) { if manager.restoreAll() { exit() } }
             }
+        }
+    }
+
+    private func exportDiagnostics() {
+        preparingExport = true
+        Task {
+            DiagnosticLog.shared.record("diagnostics.export_requested")
+            exportDocument = DiagnosticDocument(data: await DiagnosticLog.shared.snapshot())
+            preparingExport = false
+            showingExporter = true
         }
     }
 }

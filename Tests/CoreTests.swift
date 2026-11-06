@@ -13,6 +13,7 @@ final class CoreTests: XCTestCase {
         }
         let p = controller()
         try p.select(["A", "B"])
+        XCTAssertEqual(writes, 0, "Selecting apps in normal mode must not connect to the policy store")
         let a = try XCTUnwrap(p.snapshot.entries.first { $0.token == "A" }?.id)
         let b = try XCTUnwrap(p.snapshot.entries.first { $0.token == "B" }?.id)
         try p.setMode(.hidden, id: a)
@@ -24,12 +25,13 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(hidden, [])
         XCTAssertEqual(locks, ["A", "B"])
         try p.setMode(.hidden, id: a)
-        try p.setMode(.normal, id: a)
-        XCTAssertEqual(hidden, []); XCTAssertEqual(locks, ["B"])
         let before = writes
         let reloaded = controller()
         XCTAssertEqual(writes, before, "Opening the app must never reapply restrictions")
-        XCTAssertEqual(reloaded.snapshot.entries.first { $0.id == a }?.mode, .normal)
+        XCTAssertEqual(reloaded.snapshot.entries.first { $0.id == a }?.mode, .hidden)
+        try reloaded.setMode(.normal, id: a)
+        XCTAssertEqual(hidden, [])
+        XCTAssertEqual(locks, ["B"])
         try reloaded.restoreAll()
         XCTAssertTrue(locks.isEmpty && hidden.isEmpty)
     }
@@ -63,6 +65,26 @@ final class CoreTests: XCTestCase {
         try p.restoreAll()
         try p.select(["A"])
         XCTAssertEqual(p.snapshot.entries.count, 1)
+    }
+
+    func testNamingPreviouslyHiddenAppPersistsWithoutTouchingRestrictions() throws {
+        let old = Data("""
+        {"version":1,"entries":[{"id":"00000000-0000-4000-8000-000000000001","token":"A","mode":"hidden"}]}
+        """.utf8)
+        var saved = old
+        var writes = 0
+        func open() -> PolicyController<String> {
+            PolicyController(load: { saved }, save: { saved = $0 }, apply: { _, _ in writes += 1 })
+        }
+        let policy = open()
+        let entry = try XCTUnwrap(policy.snapshot.entries.first)
+        XCTAssertNil(entry.nickname)
+        try policy.rename("  社交 App  ", id: entry.id)
+        let reloaded = try XCTUnwrap(open().snapshot.entries.first)
+        XCTAssertEqual(reloaded.nickname, "社交 App")
+        XCTAssertEqual(reloaded.id, entry.id)
+        XCTAssertEqual(reloaded.mode, .hidden)
+        XCTAssertEqual(writes, 0)
     }
 
     func testLimitAndModeTransition() throws {

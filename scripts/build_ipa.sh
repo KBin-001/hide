@@ -5,13 +5,21 @@ mkdir -p build dist
 xcodebuild -project Calculator.xcodeproj -scheme Calculator -configuration Release \
   -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' \
-  ARCHS=arm64 ONLY_ACTIVE_ARCH=NO build
+  ARCHS=arm64 ONLY_ACTIVE_ARCH=NO DEBUG_INFORMATION_FORMAT=dwarf-with-dsym build
 
 # Fresh staging: never recursively remove a caller-provided or calculated directory.
 stage="$(mktemp -d "$PWD/build/stage.XXXXXX")"
 mkdir -p "$stage/Payload"
 ditto build/DerivedData/Build/Products/Release-iphoneos/Calculator.app "$stage/Payload/Calculator.app"
 app="$stage/Payload/Calculator.app"
+dsym=build/DerivedData/Build/Products/Release-iphoneos/Calculator.app.dSYM
+app_uuid="$(xcrun dwarfdump --uuid "$app/Calculator" | awk '{print $2}')"
+dsym_uuid="$(xcrun dwarfdump --uuid "$dsym" | awk '{print $2}')"
+if [[ -z "$app_uuid" || "$app_uuid" != "$dsym_uuid" ]]; then
+  echo "Calculator.dSYM does not match the IPA executable" >&2
+  exit 1
+fi
+echo "Verified Calculator dSYM UUID $app_uuid"
 # No certificate, Apple ID, provisioning profile, private entitlement, or exportArchive needed.
 # TrollStore re-signs this ad-hoc signature at installation, retaining its entitlements.
 if [ -d "$app/Frameworks" ]; then

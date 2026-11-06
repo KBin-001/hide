@@ -31,6 +31,30 @@
 
 手机处于前台且受保护数据可用。点击授权后工作线程立即写入 `center.shared.begin`，约 32 秒后主线程记录超时，随后仍能操作导出。日志缺少 `center.shared.end` 和 `request.individual.begin`，当前证据定位到共享实例的访问。具体阻塞原因待确认，包括设备端服务状态与安装身份的影响。下一项对照是在同一台设备上用 App Store 安装、支持 iOS 16 的屏幕使用时间应用触发个人授权，观察是否出现系统弹窗或可进入 App 选择器。[Apple AuthorizationCenter 文档](https://developer.apple.com/documentation/familycontrols/authorizationcenter) · [Jomo 兼容性](https://apps.apple.com/cn/app/jomo-screen-time-blocker/id1609960918)
 
+## 1.0.4 退出看门狗与恢复候选
+
+2026-11-06 15:28:16（北京时间），iPhone 13 Pro / iOS 16.3（20D47）。报告是 `process-exit` 看门狗，系统等了 5 秒。报告中的 Calculator Mach-O UUID 与实际 1.0.4 IPA 匹配。采样时主线程等待 Mach 消息，SwiftUI AsyncRenderer 正等主线程持有的互斥锁。应用自身栈帧仅匹配到 `_main`，其余相关偏移在同一系统共享缓存中。没有该系统构建的符号，无法把等待归到某个具体 API，也无法从这份退出报告确定卡顿最先发生在哪个页面。
+
+候选改动移除管理列表每行的系统 token 标签，使用本地备注和系统图标占位。后台串行加载与提交，首次选择正常 App 只写本地。记录 `policy.store.begin`、`policy.shield.begin/end`、`policy.blocked.begin/end`，可区分等待发生在哪个边界。写入返回只表示调用结束，仍需观察桌面、搜索和启动结果。
+
+下一轮同一设备复现，先打开计算器和管理页，记录能否正常返回。选一个 App，依次验证上锁、正常、隐藏、正常。每个状态检查桌面、搜索、实际启动，再重新进入管理页。若卡住，记录发生在 PIN 前还是进入管理页后；能操作时导出「诊断」中的日志。若独立上锁有效而隐藏仍失败，再对比 Apple 公共 API 的 token 和已独立核实的 Bundle ID 两种初始化方式。恢复候选这轮仅做源代码检查，尚未运行 Swift 测试、打包或在真机复验。[Apple 看门狗排查](https://developer.apple.com/documentation/xcode/addressing-watchdog-terminations) · [恢复规格](SCREEN-TIME-RECOVERY-SPEC.md)
+
+## 1.0.5 真机记录表
+
+用 TrollStore 覆盖安装 1.0.5（build 6）。进入管理页后，从同一条记录逐项操作。等待「正在提交」结束再切到桌面。每项实际点开一次目标 App。系统搜索仍显示图标时，分别记录点击搜索结果的行为和点击桌面图标的行为。
+
+| 请求状态 | 桌面可见 | 搜索可见 | 实际打开或系统限制页 | 重进管理页 |
+| --- | --- | --- | --- | --- |
+| 正常（基线） | 待测 | 待测 | 待测 | 待测 |
+| 上锁 | 待测 | 待测 | 待测 | 待测 |
+| 正常（解除上锁） | 待测 | 待测 | 待测 | 待测 |
+| 隐藏 | 待测 | 待测 | 待测 | 待测 |
+| 正常（解除隐藏） | 待测 | 待测 | 待测 | 待测 |
+
+- 冷启动复验时，退出到桌面，从 App 切换器关闭计算器，再重新打开。记录能否输入 PIN、进入管理页、查看授权并恢复。授权后若找不到限制效果，在「诊断」展开并导出日志，同时保留上表观察结果。
+- 若再次有 `.ips`，保留同一构建的 IPA 和 `Calculator-Debug-Symbols` artifact。打包时校验了 dSYM 和 App Mach-O 的 UUID，系统共享缓存帧还需对应 iOS 构建的符号。
+- 滚动对照使用同一台 iPhone、同一组至少 15 条记录，并固定 iOS 字体和减少动态效果设置。管理页加载后，从列表顶部连续滑到底部再返回，重复三次，记录可感知停顿。再操作一次条目菜单、退出和导出。VoiceOver 检查一条备注名及其模式能否读出。设备可连接 Instruments 时，用 SwiftUI 和 Hangs 对比相同手势的记录。
+
 ## 编译耗时样本
 
 依据下列 1.0.1 成功运行的 Actions 时间戳：真机 xcodebuild 约 49 秒；含签名、打包、IPA 校验的步骤约 54 秒；从 checkout 到产物上传约 447 秒（7 分 27 秒）。其中模拟器准备、构建与 UI 验证步骤约 337 秒，UI 用例本身约 31 秒。排队时间另计，这些是实测样本而非固定时长保证。

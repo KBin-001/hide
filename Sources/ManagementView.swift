@@ -21,60 +21,92 @@ struct ManagementView: View {
     @ObservedObject var manager: AppManager
     let exit: () -> Void
     @State private var picking = false
-    @State private var draft = FamilyActivitySelection()
     @State private var confirmRestore = false
     @State private var exportDocument: DiagnosticDocument?
     @State private var showingExporter = false
     @State private var preparingExport = false
     @State private var exportError = false
+    @State private var restoreRequested = false
+    @State private var editingID: UUID?
+    @State private var nickname = ""
+    @State private var renaming = false
 
     var body: some View {
         NavigationStack {
             List {
-                Section("1 · 个人授权") {
-                    LabeledContent("系统状态", value: manager.authorizationText)
-                    Button(manager.busy ? "正在请求…" : manager.requestOutstanding ? "系统请求尚未结束" : "请求 / 重试个人授权") {
-                        manager.requestAuthorization()
-                    }.disabled(manager.requestOutstanding || manager.approved)
-                    Text(manager.authorizationStageText).font(.footnote)
+                Section {
+                    Label {
+                        LabeledContent("屏幕使用时间", value: manager.authorizationText)
+                    } icon: {
+                        Image(systemName: manager.approved ? "checkmark.shield.fill" : "shield")
+                            .foregroundStyle(manager.approved ? Color.teal : Color.secondary)
+                    }
+                    if !manager.approved {
+                        Button(manager.requestOutstanding ? manager.authorizationStageText : "连接系统授权") {
+                            manager.requestAuthorization()
+                        }.disabled(manager.requestOutstanding)
+                    }
                     if let issue = manager.authorizationIssue {
                         Text(issue).font(.footnote).foregroundStyle(.orange).textSelection(.enabled)
                     }
-                    Button("导出诊断日志", action: exportDiagnostics).disabled(preparingExport)
-                    Text("授权入口和使用历史仍由 iOS 保留。IPA 签名中存在 entitlement 不代表授权成功。")
-                        .font(.footnote).foregroundStyle(.secondary)
                 }
-                Section("2 · 先验证一个第三方 App") {
-                    Button("选择 App") { draft = manager.selection; picking = true }
-                        .disabled(!manager.approved || !manager.storageHealthy)
-                    Text("在系统选择器中展开分类，勾选具体 App；不要只勾选分类。先选一个不影响日常使用的第三方 App，选“隐藏”，离开查看图标，再返回选“正常”验证恢复。")
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
-                Section("3 · 逐 App 管理（已保存的请求状态）") {
-                    if manager.entries.isEmpty { Text("尚未选择 App").foregroundStyle(.secondary) }
-                    ForEach(manager.entries) { entry in
-                        VStack(alignment: .leading, spacing: 12) {
-                            Label(entry.token)
-                            Picker("状态", selection: Binding(get: { entry.mode }, set: { manager.setMode($0, id: entry.id) })) {
-                                ForEach(AppMode.allCases) { mode in Text(mode.title).tag(mode) }
-                            }.pickerStyle(.segmented).disabled(!manager.storageHealthy)
-                        }.padding(.vertical, 6)
+                Section {
+                    ForEach(Array(manager.entries.enumerated()), id: \.element.id) { index, entry in
+                        ManagedAppRow(title: entry.nickname ?? "App \(index + 1)", mode: entry.mode,
+                                      canRestrict: manager.approved) { mode in
+                            Task { await manager.setMode(mode, id: entry.id) }
+                        } edit: {
+                            editingID = entry.id
+                            nickname = entry.nickname ?? ""
+                            renaming = true
+                        }
+                        .disabled(manager.policyBusy || !manager.storageHealthy)
                     }
-                    Text("上锁会请求系统显示限制页。隐藏同时请求移除图标和限制启动。如果桌面或搜索仍显示图标，请点开检查限制页。选择正常可解除本工具的限制。")
-                        .font(.footnote).foregroundStyle(.secondary)
+                    Button {
+                        picking = true
+                    } label: {
+                        Label("选择 App", systemImage: "plus.circle")
+                    }
+                    .disabled(!manager.policyReady || manager.policyBusy || !manager.approved || !manager.storageHealthy)
+                } header: {
+                    Text("管理的 App · \(manager.entries.count)")
+                } footer: {
+                    Text("点状态可切换上锁、隐藏或正常。可设置备注名称，方便下次辨认。")
                 }
-                Section("恢复与退出") {
+                if manager.policyBusy {
+                    Section {
+                        if manager.policyTimedOut {
+                            Label("系统处理较慢。仍可退出或导出日志。", systemImage: "clock")
+                                .foregroundStyle(.orange)
+                        } else {
+                            ProgressView(manager.policyReady ? "正在提交…" : "正在读取记录…")
+                        }
+                    }
+                }
+                Section {
                     Button("恢复全部并退出", role: .destructive) { confirmRestore = true }
-                    Text("进入后台只关闭管理入口，不改变限制。恢复的 App 不会被后台任务重新隐藏。若其他工具也限制同一 App，需要分别解除。")
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
-                Section("诊断（可复制反馈）") {
-                    Text(manager.diagnostic).font(.footnote.monospaced()).textSelection(.enabled)
-                    Text("真机安装：待验证 · 个人授权：以系统状态为准 · 图标隐藏与限制页：待真机验收")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .disabled(manager.policyBusy || !manager.policyReady)
+                        .accessibilityIdentifier("management.restore")
+                    DisclosureGroup("诊断") {
+                        Text(manager.diagnostic).font(.footnote).textSelection(.enabled)
+                        Button("导出诊断日志", action: exportDiagnostics).disabled(preparingExport)
+                    }
                 }
             }
-            .onAppear(perform: manager.resumeAuthorizationIfNeeded)
+            .listStyle(.insetGrouped)
+            .tint(.teal)
+            .onAppear { DiagnosticLog.shared.record("management.entered") }
+            .task(id: manager.policyReady) {
+                if manager.policyReady { manager.resumeAuthorizationIfNeeded() }
+                else { await manager.loadPolicy() }
+            }
+            .task(id: restoreRequested) {
+                guard restoreRequested else { return }
+                let restored = await manager.restoreAll()
+                guard !Task.isCancelled else { return }
+                restoreRequested = false
+                if restored { exit() }
+            }
             .navigationTitle("App 管理")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -94,19 +126,22 @@ struct ManagementView: View {
                 Text("请重新导出并选择一个可写入的文件夹。")
             }
             .sheet(isPresented: $picking) {
-                NavigationStack {
-                    FamilyActivityPicker(selection: $draft)
-                        .navigationTitle("选择具体 App")
-                        .toolbar {
-                            ToolbarItem(placement: .cancellationAction) { Button("取消") { picking = false } }
-                            ToolbarItem(placement: .confirmationAction) {
-                                Button("保存") { manager.select(draft); picking = false }
-                            }
-                        }
+                AppSelectionSheet(selection: manager.selection) { selection in
+                    picking = false
+                    Task { await manager.select(selection) }
                 }
             }
             .confirmationDialog("撤销本工具施加的全部限制并返回计算器？", isPresented: $confirmRestore, titleVisibility: .visible) {
-                Button("恢复全部并退出", role: .destructive) { if manager.restoreAll() { exit() } }
+                Button("确认恢复全部", role: .destructive) { restoreRequested = true }
+            }
+            .alert("备注名称", isPresented: $renaming) {
+                TextField("例如：社交 App", text: $nickname)
+                Button("保存") {
+                    guard let id = editingID else { return }
+                    let name = nickname
+                    Task { await manager.rename(name, id: id) }
+                }
+                Button("取消", role: .cancel) { }
             }
         }
     }
@@ -118,6 +153,73 @@ struct ManagementView: View {
             exportDocument = DiagnosticDocument(data: await DiagnosticLog.shared.snapshot())
             preparingExport = false
             showingExporter = true
+        }
+    }
+}
+
+private struct AppSelectionSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var draft: FamilyActivitySelection
+    let save: (FamilyActivitySelection) -> Void
+
+    init(selection: FamilyActivitySelection, save: @escaping (FamilyActivitySelection) -> Void) {
+        _draft = State(initialValue: selection)
+        self.save = save
+    }
+
+    var body: some View {
+        NavigationStack {
+            FamilyActivityPicker(selection: $draft)
+                .navigationTitle("选择具体 App")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                    ToolbarItem(placement: .confirmationAction) { Button("保存") { save(draft) } }
+                }
+        }
+    }
+}
+
+private struct ManagedAppRow: View {
+    let title: String
+    let mode: AppMode
+    let canRestrict: Bool
+    let change: (AppMode) -> Void
+    let edit: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "app.fill")
+                .font(.title2)
+                .foregroundStyle(.teal)
+                .accessibilityHidden(true)
+            Text(title).font(.body.weight(.medium))
+            Spacer(minLength: 8)
+            Menu {
+                ForEach(AppMode.allCases) { option in
+                    Button {
+                        change(option)
+                    } label: {
+                        Label(option.title, systemImage: option == mode ? "checkmark" : icon(for: option))
+                    }
+                    .disabled(option != .normal && !canRestrict)
+                }
+                Button(action: edit) { Label("备注名称", systemImage: "pencil") }
+            } label: {
+                Label(mode.title, systemImage: icon(for: mode))
+                    .font(.subheadline.weight(.medium))
+                    .padding(.horizontal, 10)
+                    .frame(minHeight: 44)
+                    .background(Color.teal.opacity(0.12), in: Capsule())
+            }
+            .accessibilityLabel("\(title)，已保存请求：\(mode.title)")
+        }
+    }
+
+    private func icon(for mode: AppMode) -> String {
+        switch mode {
+        case .normal: return "checkmark.circle"
+        case .locked: return "lock"
+        case .hidden: return "eye.slash"
         }
     }
 }

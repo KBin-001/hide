@@ -9,41 +9,17 @@ final class AppManager: ObservableObject {
     @Published private(set) var authorization: AuthorizationStatus = .notDetermined
     @Published private(set) var diagnostic = "在此查看 App 限制提交结果。"
     @Published private(set) var authorizationIssue: String?
-    @Published private(set) var busy = false
     @Published private(set) var requestOutstanding = false
     @Published private(set) var authorizationStageText = "尚未连接系统服务"
     @Published private(set) var storageHealthy = true
-    private lazy var store = ManagedSettingsStore(named: .init("calculator-vault-v1"))
-    private var policy: PolicyController<ApplicationToken>!
+    @Published private(set) var policyReady = false
+    @Published private(set) var policyBusy = false
+    @Published private(set) var policyTimedOut = false
+    private let policyWorker = AppPolicyWorker()
     private let authorizationProbe = AuthorizationProbe()
     private let approvalKey = "family-controls.previous-approval"
     private var checkedOnEntry = false
     private var authorizationObservation: AnyCancellable?
-
-    init() {
-        let file = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("management-v1.json")
-        policy = PolicyController(load: {
-            guard FileManager.default.fileExists(atPath: file.path) else { return nil }
-            return try Data(contentsOf: file)
-        }, save: { data in
-            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try data.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-        }, apply: { [weak self] shielded, hidden in
-            guard let self = self else { return }
-            let blocked = Set(hidden.map { Application(token: $0) })
-            // Set the shield first so a transition out of hidden can keep the launch restriction.
-            DiagnosticLog.shared.record("policy.submit.begin shield=\(shielded.count) blocked=\(blocked.count)")
-            let ownStore = self.store
-            ownStore.shield.applications = shielded.isEmpty ? nil : shielded
-            ownStore.application.blockedApplications = blocked.isEmpty ? nil : blocked
-            let storedShield = ownStore.shield.applications ?? []
-            let storedBlocked = ownStore.application.blockedApplications ?? []
-            DiagnosticLog.shared.record("policy.submit.end shield=\(storedShield.count) blocked=\(storedBlocked.count) shield_matches=\(storedShield == shielded) blocked_matches=\(storedBlocked == blocked)")
-        })
-        entries = policy.snapshot.entries
-        if let error = policy.loadError { storageHealthy = false; diagnostic = describe(error) }
-    }
 
     var selection: FamilyActivitySelection {
         var value = FamilyActivitySelection()
@@ -60,8 +36,7 @@ final class AppManager: ObservableObject {
         }
     }
     func resumeAuthorizationIfNeeded() {
-        DiagnosticLog.shared.record("management.entered")
-        guard !checkedOnEntry else { return }
+        guard policyReady, !checkedOnEntry else { return }
         checkedOnEntry = true
         // A saved selection from older builds also indicates prior approval.
         let previousApproval = UserDefaults.standard.object(forKey: approvalKey) as? Bool ?? !entries.isEmpty
@@ -79,21 +54,20 @@ final class AppManager: ObservableObject {
             guard let self else { return }
             switch event {
             case .progress(let stage):
-                self.busy = true; self.requestOutstanding = true
+                self.requestOutstanding = true
                 self.authorizationStageText = stage.rawValue
             case .timedOut(let stage):
                 log.record("auth.\(attempt) deadline.exceeded limit_s=30 stage=\(stage)")
-                self.busy = false
                 self.authorizationStageText = "等待超时：\(stage.rawValue)"
                 self.authorizationIssue = "等待 30 秒后系统仍未返回。可以退出管理页；系统返回后会更新状态。若一直卡住，请导出诊断日志。"
             case .failed(let error):
                 log.record("auth.\(attempt) ui.error domain=\((error as NSError).domain) code=\((error as NSError).code)")
-                self.busy = false; self.requestOutstanding = false
+                self.requestOutstanding = false
                 self.authorizationStageText = "系统返回错误"
                 self.authorizationIssue = "个人授权失败\n" + self.describe(error)
             case .completed(let outcome):
                 log.record("auth.\(attempt) ui.completed outcome=\(outcome)")
-                self.busy = false; self.requestOutstanding = false
+                self.requestOutstanding = false
                 self.authorizationStageText = "系统已返回"
                 self.authorizationIssue = nil
             }
@@ -148,35 +122,57 @@ final class AppManager: ObservableObject {
         UserDefaults.standard.set(approved, forKey: approvalKey)
         DiagnosticLog.shared.record("auth.status.updated status=\(status)")
     }
-    func select(_ value: FamilyActivitySelection) {
+    func loadPolicy() async {
+        guard !policyReady else { return }
+        await perform("load", message: "已读取本地管理记录。") { _ in }
+    }
+
+    func select(_ value: FamilyActivitySelection) async {
         guard approved else { diagnostic = "请先获得个人授权。"; return }
-        perform {
-            try policy.select(value.applicationTokens)
-            diagnostic = "选择已保存。只管理单个 App；分类和网站选择不会生效。移除的 App 已撤销本工具限制。"
-        }
+        let tokens = value.applicationTokens
+        await perform("select", message: "已保存所选 App。") { try $0.select(tokens) }
     }
-    func setMode(_ mode: AppMode, id: UUID) {
+
+    func setMode(_ mode: AppMode, id: UUID) async {
         guard approved || mode == .normal else { diagnostic = "系统未授权，无法提交限制。"; return }
-        perform {
-            try policy.setMode(mode, id: id)
-            diagnostic = "已保存并向系统提交“\(mode.title)”请求。实际图标/限制页效果须在真机确认。"
+        await perform("mode.\(mode.rawValue)", message: "已向系统提交「\(mode.title)」请求。") {
+            try $0.setMode(mode, id: id)
         }
     }
-    @discardableResult func restoreAll() -> Bool {
-        do {
-            try policy.restoreAll()
-            entries = policy.snapshot.entries; storageHealthy = true
-            diagnostic = "已清空本工具的上锁和隐藏请求；不会在后台或重开时重新施加。其他工具的限制可能仍然存在。"
-            return true
-        } catch {
-            entries = policy.snapshot.entries; storageHealthy = false
-            diagnostic = "已请求撤销限制，但保存失败；请保持在管理页重试恢复全部。\n" + describe(error)
-            return false
-        }
+
+    func rename(_ nickname: String, id: UUID) async {
+        await perform("rename", message: "已保存备注名称。") { try $0.rename(nickname, id: id) }
     }
-    private func perform(_ action: () throws -> Void) {
-        do { try action(); entries = policy.snapshot.entries }
-        catch { diagnostic = describe(error) }
+
+    func restoreAll() async -> Bool {
+        await perform("restore", message: "已请求解除本工具施加的全部限制。") { try $0.restoreAll() }
+    }
+
+    @discardableResult
+    private func perform(_ operation: String, message: String,
+                         work: @escaping @Sendable (PolicyController<ApplicationToken>) throws -> Void) async -> Bool {
+        guard !policyBusy else { return false }
+        let log = DiagnosticLog.shared
+        policyBusy = true
+        policyTimedOut = false
+        log.record("policy.operation.begin kind=\(operation)")
+        let deadline = Task {
+            do { try await Task.sleep(nanoseconds: 5_000_000_000) }
+            catch { return }
+            policyTimedOut = true
+            log.record("policy.operation.slow kind=\(operation)")
+        }
+        let update = await policyWorker.run(work)
+        deadline.cancel()
+        entries = update.entries
+        storageHealthy = update.storageError == nil
+        policyReady = true
+        policyBusy = false
+        policyTimedOut = false
+        let error = update.operationError ?? update.storageError
+        log.record("policy.operation.end kind=\(operation) count=\(update.entries.count) error=\(error != nil)")
+        diagnostic = error.map(describe) ?? message
+        return error == nil
     }
     private func describe(_ error: Error) -> String {
         let e = error as NSError

@@ -12,6 +12,7 @@ struct AppEntry<Token: Codable & Hashable>: Codable, Identifiable {
     var id: UUID = UUID()
     let token: Token
     var mode: AppMode = .normal
+    var nickname: String? = nil
 }
 
 struct PolicySnapshot<Token: Codable & Hashable>: Codable {
@@ -50,7 +51,11 @@ final class PolicyController<Token: Codable & Hashable> {
         next.entries.removeAll { !tokens.contains($0.token) }
         let existing = Set(next.entries.map(\.token))
         next.entries += tokens.subtracting(existing).map { AppEntry(token: $0) }
-        try commit(next)
+        if snapshot.entries.contains(where: { $0.mode != .normal && !tokens.contains($0.token) }) {
+            try commit(next)
+        } else {
+            try persist(next)
+        }
     }
 
     func setMode(_ mode: AppMode, id: UUID) throws {
@@ -59,6 +64,15 @@ final class PolicyController<Token: Codable & Hashable> {
         guard let index = next.entries.firstIndex(where: { $0.id == id }) else { return }
         next.entries[index].mode = mode
         try commit(next)
+    }
+
+    func rename(_ nickname: String, id: UUID) throws {
+        guard loadError == nil else { throw PolicyError.invalidState }
+        var next = snapshot
+        guard let index = next.entries.firstIndex(where: { $0.id == id }) else { return }
+        let name = nickname.trimmingCharacters(in: .whitespacesAndNewlines)
+        next.entries[index].nickname = name.isEmpty ? nil : String(name.prefix(40))
+        try persist(next)
     }
 
     func restoreAll() throws {
@@ -82,9 +96,13 @@ final class PolicyController<Token: Codable & Hashable> {
             throw PolicyError.tooMany
         }
         let shielded = locked.union(hidden.prefix(max(0, limit - locked.count)))
+        try persist(next)
+        apply(shielded, Set(hidden))
+    }
+
+    private func persist(_ next: PolicySnapshot<Token>) throws {
         try save(JSONEncoder().encode(next))
         snapshot = next
-        apply(shielded, Set(hidden))
     }
 }
 

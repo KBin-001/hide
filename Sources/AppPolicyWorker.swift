@@ -6,6 +6,9 @@ import ManagedSettings
 final class AppPolicyWorker: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.personal.calculatorvault.policy", qos: .userInitiated)
     private lazy var store = ManagedSettingsStore(named: .init("calculator-vault-v1"))
+    #if DEBUG && targetEnvironment(simulator)
+    private var simulatedStall = false
+    #endif
     private lazy var policy: PolicyController<ApplicationToken> = {
         let file = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("management-v1.json")
@@ -21,7 +24,10 @@ final class AppPolicyWorker: @unchecked Sendable {
             #if DEBUG && targetEnvironment(simulator)
             // The UI regression exercises a slow system boundary without connecting to Screen Time.
             if ProcessInfo.processInfo.environment["CALCULATOR_TEST_SLOW_MANAGED_SETTINGS"] == "1" {
-                Thread.sleep(forTimeInterval: 30)
+                if !self.simulatedStall {
+                    self.simulatedStall = true
+                    Thread.sleep(forTimeInterval: 25)
+                }
                 return
             }
             #endif

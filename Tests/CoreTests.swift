@@ -57,6 +57,21 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(hidden, [])
     }
 
+    func testDeselectReleasesStaleRestrictionAfterInterruptedRestore() throws {
+        let saved = try JSONEncoder().encode(PolicySnapshot(entries: [
+            AppEntry(token: "A"), AppEntry(token: "B", mode: .locked)
+        ]))
+        var shields: Set<String> = ["A", "B"]
+        var hidden: Set<String> = ["A"]
+        let p = PolicyController<String>(load: { saved }, save: { _ in }, apply: {
+            shields = $0
+            hidden = $1
+        })
+        try p.select(["B"])
+        XCTAssertEqual(shields, ["B"])
+        XCTAssertTrue(hidden.isEmpty)
+    }
+
     func testCorruptStateNeverAppliesAndCanRecover() throws {
         var calls = 0
         let p = PolicyController<String>(load: { Data("broken".utf8) }, save: { _ in }, apply: { _, _ in calls += 1 })

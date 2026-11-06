@@ -51,7 +51,8 @@ final class PolicyController<Token: Codable & Hashable> {
         next.entries.removeAll { !tokens.contains($0.token) }
         let existing = Set(next.entries.map(\.token))
         next.entries += tokens.subtracting(existing).map { AppEntry(token: $0) }
-        if snapshot.entries.contains(where: { $0.mode != .normal && !tokens.contains($0.token) }) {
+        // A saved normal request can still have a stale system restriction after interruption.
+        if snapshot.entries.contains(where: { !tokens.contains($0.token) }) {
             try commit(next)
         } else {
             try persist(next)

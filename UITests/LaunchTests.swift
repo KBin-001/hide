@@ -38,7 +38,7 @@ final class LaunchTests: XCTestCase {
         let restore = app.buttons["management.restore"]
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND enabled == true"), object: restore)
         XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
-        app.buttons["诊断"].tap()
+        app.descendants(matching: .any)["诊断"].firstMatch.tap()
         let export = app.buttons["导出诊断日志"]
         XCTAssertTrue(export.waitForExistence(timeout: 5))
         restore.tap()
@@ -49,6 +49,13 @@ final class LaunchTests: XCTestCase {
         app.buttons["退出"].tap()
         XCTAssertTrue(app.buttons["AC"].waitForExistence(timeout: 5))
         enterManagement(app, pin: pin)
+
+        let returned = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND enabled == true"), object: restore)
+        XCTAssertEqual(XCTWaiter.wait(for: [returned], timeout: 30), .completed,
+                       "The late result must not close the management page opened after it started")
+        restore.tap()
+        app.buttons["确认恢复全部"].tap()
+        XCTAssertTrue(app.buttons["AC"].waitForExistence(timeout: 5))
     }
 
     private func enterManagement(_ app: XCUIApplication, pin: String) {

@@ -49,6 +49,29 @@ struct ManagementView: View {
                     if let issue = manager.authorizationIssue {
                         Text(issue).font(.footnote).foregroundStyle(.orange).textSelection(.enabled)
                     }
+                    Button {
+                        picking = true
+                    } label: {
+                        Label("选择 App", systemImage: "plus.circle")
+                    }
+                    .disabled(!manager.policyReady || manager.policyBusy || !manager.approved || !manager.storageHealthy)
+                }
+                Section {
+                    Button("恢复全部并退出", role: .destructive) { confirmRestore = true }
+                        .disabled(manager.policyBusy || !manager.policyReady)
+                        .accessibilityIdentifier("management.restore")
+                    DisclosureGroup("诊断") {
+                        Text(manager.diagnostic).font(.footnote).textSelection(.enabled)
+                        Button("导出诊断日志", action: exportDiagnostics).disabled(preparingExport)
+                    }
+                    if manager.policyBusy {
+                        if manager.policyTimedOut {
+                            Label("系统处理较慢。仍可退出或导出日志。", systemImage: "clock")
+                                .foregroundStyle(.orange)
+                        } else {
+                            ProgressView(manager.policyReady ? "正在提交…" : "正在读取记录…")
+                        }
+                    }
                 }
                 Section {
                     ForEach(Array(manager.entries.enumerated()), id: \.element.id) { index, entry in
@@ -62,35 +85,10 @@ struct ManagementView: View {
                         }
                         .disabled(manager.policyBusy || !manager.storageHealthy)
                     }
-                    Button {
-                        picking = true
-                    } label: {
-                        Label("选择 App", systemImage: "plus.circle")
-                    }
-                    .disabled(!manager.policyReady || manager.policyBusy || !manager.approved || !manager.storageHealthy)
                 } header: {
                     Text("管理的 App · \(manager.entries.count)")
                 } footer: {
                     Text("点状态可切换上锁、隐藏或正常。可设置备注名称，方便下次辨认。")
-                }
-                if manager.policyBusy {
-                    Section {
-                        if manager.policyTimedOut {
-                            Label("系统处理较慢。仍可退出或导出日志。", systemImage: "clock")
-                                .foregroundStyle(.orange)
-                        } else {
-                            ProgressView(manager.policyReady ? "正在提交…" : "正在读取记录…")
-                        }
-                    }
-                }
-                Section {
-                    Button("恢复全部并退出", role: .destructive) { confirmRestore = true }
-                        .disabled(manager.policyBusy || !manager.policyReady)
-                        .accessibilityIdentifier("management.restore")
-                    DisclosureGroup("诊断") {
-                        Text(manager.diagnostic).font(.footnote).textSelection(.enabled)
-                        Button("导出诊断日志", action: exportDiagnostics).disabled(preparingExport)
-                    }
                 }
             }
             .listStyle(.insetGrouped)

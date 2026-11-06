@@ -2,6 +2,52 @@ import XCTest
 @testable import CalculatorCore
 
 final class CoreTests: XCTestCase {
+    func testRestrictionMovesToDefaultStoreAndRestoreClearsBothStores() {
+        var standard: Set<String> = []
+        var named: Set<String> = ["previous"]
+        func write(_ location: RestrictionStoreRouting.Location, _ desired: Set<String>) -> Bool {
+            switch location {
+            case .defaultStore: standard = desired
+            case .legacy: named = desired
+            }
+            return true
+        }
+
+        XCTAssertTrue(RestrictionStoreRouting.submit(["QQ"], write: write))
+        XCTAssertEqual(standard, ["QQ"])
+        XCTAssertTrue(named.isEmpty)
+        XCTAssertTrue(RestrictionStoreRouting.submit([], write: write))
+        XCTAssertTrue(standard.isEmpty && named.isEmpty)
+    }
+
+    func testRestrictionFallsBackOnlyWhenTheOtherStoreCanBeCleared() {
+        var defaultClears = false
+        var named: Set<String> = []
+        func write(_ location: RestrictionStoreRouting.Location, _ desired: Set<String>) -> Bool {
+            switch location {
+            case .defaultStore: return desired.isEmpty && defaultClears
+            case .legacy: named = desired; return true
+            }
+        }
+
+        XCTAssertFalse(RestrictionStoreRouting.submit(["QQ"], write: write))
+        XCTAssertEqual(named, ["QQ"])
+        defaultClears = true
+        XCTAssertTrue(RestrictionStoreRouting.submit(["QQ"], write: write))
+        XCTAssertTrue(RestrictionStoreRouting.submit([], write: write))
+        XCTAssertTrue(named.isEmpty)
+    }
+
+    func testFailedDefaultRestoreStillClearsLegacyStore() {
+        var attempted: [RestrictionStoreRouting.Location] = []
+        XCTAssertFalse(RestrictionStoreRouting.submit(Set<String>()) { location, desired in
+            XCTAssertTrue(desired.isEmpty)
+            attempted.append(location)
+            return location == .legacy
+        })
+        XCTAssertEqual(attempted, [.defaultStore, .legacy])
+    }
+
     func testHideRestoreAndIsolationSurviveReload() throws {
         var saved: Data?
         var locks = Set<String>(), hidden = Set<String>()

@@ -16,6 +16,7 @@ final class AppManager: ObservableObject {
     @Published private(set) var policyReady = false
     @Published private(set) var policyBusy = false
     @Published private(set) var policyTimedOut = false
+    @Published private(set) var policyIssue: String?
     private let policyWorker = AppPolicyWorker()
     private let authorizationProbe = AuthorizationProbe()
     private let approvalKey = "family-controls.previous-approval"
@@ -171,7 +172,15 @@ final class AppManager: ObservableObject {
         policyBusy = false
         policyTimedOut = false
         let error = update.operationError ?? update.storageError
-        log.record("policy.operation.end kind=\(operation) count=\(update.entries.count) error=\(error != nil)")
+        let verification = update.restrictionWriteVerified.map { $0 ? "matched" : "mismatch" } ?? "not_checked"
+        log.record("policy.operation.end kind=\(operation) count=\(update.entries.count) error=\(error != nil) verification=\(verification)")
+        if let verified = update.restrictionWriteVerified {
+            policyIssue = verified ? nil : "iOS 读回的限制与请求不一致。请导出诊断日志。"
+            if !verified {
+                diagnostic = error.map(describe) ?? "已记录请求。至少一项系统设置读回不匹配，请查看诊断日志中的写入结果。"
+                return false
+            }
+        }
         diagnostic = error.map(describe) ?? message
         return error == nil
     }

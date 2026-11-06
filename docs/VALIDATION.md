@@ -67,6 +67,12 @@
 
 1.0.6 仅改变首次连接的触发与提示。冷启动后由前台点按触发，已保存授权仅提示此前状态。框架调用、签名和策略保持相同，便于对照。若手动连接仍停在共享实例初始化，优先收集系统服务证据，不把延长等待或模拟授权当成修复。[Apple 授权接口](https://developer.apple.com/documentation/familycontrols/authorizationcenter/requestauthorization%28for%3A%29)
 
+## 1.0.6 真机反馈与限制存储对照
+
+2026-11-06，iPhone 13 Pro / iOS 16.3。1.0.6 两个进程均返回 `Approved`，其中首次弹出系统授权。已选择一条 App 记录。隐藏提交 `shield=1 blocked=1`，上锁提交 `shield=1 blocked=0`，两次均从系统 setter 返回。用户确认 QQ 仍未隐藏、仍可打开。1.0.6 未读取系统存储，因此不能把 `error=false` 当成策略生效回执。
+
+1.0.7 优先向应用自己的默认存储提交同一条设置，读回不匹配时对照旧命名存储，并只在确认迁移后清除另一处的同类设置。正常和恢复操作清理两处，命名和默认写入均在原独立队列中。日志分别显示 `kind=shield/blocked` 与 `store=defaultStore/legacy`，仅记录数量及匹配结果。真机先测 QQ 上锁，恢复正常后再测隐藏。若两个存储都读回为空，下一步应收集 iOS 系统服务日志或同设备使用 Apple 正常签名应用作对照。若仅隐藏失败，再单独对比已核实 Bundle ID 和 token 两种初始化方式。[Apple 存储名称说明](https://developer.apple.com/documentation/managedsettings/managedsettingsstore/name)
+
 ## 编译耗时样本
 
 依据下列 1.0.1 成功运行的 Actions 时间戳：真机 xcodebuild 约 49 秒；含签名、打包、IPA 校验的步骤约 54 秒；从 checkout 到产物上传约 447 秒（7 分 27 秒）。其中模拟器准备、构建与 UI 验证步骤约 337 秒，UI 用例本身约 31 秒。排队时间另计，这些是实测样本而非固定时长保证。

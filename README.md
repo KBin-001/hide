@@ -61,7 +61,7 @@ Get-Content .\Calculator.ipa.sha256
 6. 重开管理页确认所选 App 和请求状态保留；取消选择某 App 会撤销本工具对它的限制。最后点“恢复全部并退出”，所有 App 应恢复。
 7. 错误 PIN 加等号应继续普通计算；进入管理页后退后台，再打开应是计算器。通过系统设置撤销屏幕使用时间权限后，管理页应反映未授权；重新授权不会自动重新施加保存的限制。
 
-上锁使用 `shield.applications`。隐藏同时提交 `application.blockedApplications` 和 `shield.applications`，上锁与隐藏合计最多 50 个 App。只写入本工具的命名 store。管理页用本地备注显示 App 名称，并在独立队列提交限制。日志记录每种限制调用的开始和返回，图标和限制页仍需真机检查。1.0.6 冷启动后手动连接系统授权，已记录的授权只用于提示。若等待超时，先导出日志，再从 App 切换器彻底关闭计算器，重开后手动连接。
+上锁使用 `shield.applications`。隐藏同时提交 `application.blockedApplications` 和 `shield.applications`，上锁与隐藏合计最多 50 个 App。1.0.7 优先写入本工具的默认 store，每项读回不匹配时才尝试旧命名 store。恢复清理两个 store 中由本工具使用的设置。日志记录每项配置的写入和读回数量；实际图标与限制页仍需真机检查。冷启动后手动连接系统授权，已记录的授权只用于提示。若等待超时，先导出日志，再从 App 切换器彻底关闭计算器，重开后手动连接。
 
 “恢复全部”即使文件保存失败也先提交撤销请求，然后在管理页显示错误并禁止进一步状态编辑，直到重试保存成功。若忘记 PIN，优先到 iOS 设置 → 屏幕使用时间 → 具有屏幕使用时间访问权限的 App 中撤销本工具授权；不同版本文案可能不同。正常卸载/停用前先恢复全部。
 
@@ -71,7 +71,7 @@ Get-Content .\Calculator.ipa.sha256
 |---|---|---|
 | iPhone 编译与产物检查 | 1.0.3 已通过 | 9 项核心测试、模拟器启动流程、arm64 编译、IPA 与签名校验通过。[Build IPA 成功记录](https://github.com/KBin-001/hide/actions/runs/42172942090) |
 | TrollStore 真机安装并运行 | 1.0.3 已确认能进入管理页并导出日志 | 用户设备 iPhone 13 Pro / iOS 16.3 |
-| 个人授权、隐藏、恢复、上锁 | 1.0.4 真机反馈隐藏后仍可见，重进时卡住 | 1.0.5 已打包，待 iOS 16.3 真机复验。[验收记录](docs/VALIDATION.md) |
+| 个人授权、隐藏、恢复、上锁 | 1.0.6 在 iOS 16.3 两次授权成功，QQ 隐藏和上锁仍未生效 | 1.0.7 对照默认与旧命名 store。[验收记录](docs/VALIDATION.md) |
 
 Actions 对**解压后的实际 IPA**检查：唯一 `Payload/*.app`、显示名和固定 ID、Info.plist 最低系统 16.0、iPhoneOS 平台/iPhone 设备族、arm64 架构、Mach-O iOS 平台及最低版本、codesign 完整性、签名内 Family Controls/Keychain entitlement 和无额外权限。检查失败不上传成功产物。验证报告仍把安装、授权、隐藏效果标为待真机验证。
 

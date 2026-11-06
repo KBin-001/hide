@@ -1,11 +1,12 @@
 import Foundation
 import ManagedSettings
 
-/// Owns the policy file and the named store on one serial queue. ManagedSettings
-/// calls can wait for another process, so the UI never accesses this store directly.
+/// Keeps the policy file and this app's ManagedSettings stores on one serial queue.
 final class AppPolicyWorker: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.personal.calculatorvault.policy", qos: .userInitiated)
-    private lazy var store = ManagedSettingsStore(named: .init("calculator-vault-v1"))
+    private lazy var defaultStore = ManagedSettingsStore()
+    private lazy var legacyStore = ManagedSettingsStore(named: .init("calculator-vault-v1"))
+    private var restrictionWriteVerified: Bool?
     #if DEBUG && targetEnvironment(simulator)
     private var simulatedStall = false
     #endif
@@ -31,26 +32,44 @@ final class AppPolicyWorker: @unchecked Sendable {
                 return
             }
             #endif
-            let ownStore = self.store
-            log.record("policy.shield.begin")
-            ownStore.shield.applications = shielded.isEmpty ? nil : shielded
-            log.record("policy.shield.end")
-            log.record("policy.blocked.begin")
+            let shieldMatches = self.submit(shielded, at: \.shield.applications, name: "shield")
             let blocked = Set(hidden.map { Application(token: $0) })
-            ownStore.application.blockedApplications = blocked.isEmpty ? nil : blocked
-            log.record("policy.blocked.end")
+            let blockedMatches = self.submit(blocked, at: \.application.blockedApplications, name: "blocked")
+            self.restrictionWriteVerified = shieldMatches && blockedMatches
+            log.record("policy.store.end shield_verified=\(shieldMatches) blocked_verified=\(blockedMatches)")
         })
     }()
+
+    private func submit<Value: Hashable>(
+        _ desired: Set<Value>, at keyPath: ReferenceWritableKeyPath<ManagedSettingsStore, Set<Value>?>, name: String
+    ) -> Bool {
+        RestrictionStoreRouting.submit(desired) { location, values in
+            let log = DiagnosticLog.shared
+            log.record("policy.write.begin kind=\(name) store=\(location.rawValue) requested=\(values.count)")
+            let store = location == .defaultStore ? defaultStore : legacyStore
+            store[keyPath: keyPath] = values.isEmpty ? nil : values
+            var stored = store[keyPath: keyPath] ?? []
+            if stored != values {
+                Thread.sleep(forTimeInterval: 0.3)
+                stored = store[keyPath: keyPath] ?? []
+            }
+            let matches = stored == values
+            log.record("policy.write.end kind=\(name) store=\(location.rawValue) readback=\(stored.count) matches=\(matches)")
+            return matches
+        }
+    }
 
     struct Update {
         let entries: [AppEntry<ApplicationToken>]
         let storageError: Error?
         let operationError: Error?
+        let restrictionWriteVerified: Bool?
     }
 
     func run(_ operation: @escaping @Sendable (PolicyController<ApplicationToken>) throws -> Void) async -> Update {
         await withCheckedContinuation { continuation in
             queue.async {
+                self.restrictionWriteVerified = nil
                 let policy = self.policy
                 let error: Error?
                 do {
@@ -61,7 +80,8 @@ final class AppPolicyWorker: @unchecked Sendable {
                 }
                 continuation.resume(returning: Update(entries: policy.snapshot.entries,
                                                       storageError: policy.loadError,
-                                                      operationError: error))
+                                                      operationError: error,
+                                                      restrictionWriteVerified: self.restrictionWriteVerified))
             }
         }
     }

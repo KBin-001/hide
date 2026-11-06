@@ -66,6 +66,9 @@ struct ManagementView: View {
                         Text(manager.diagnostic).font(.footnote).textSelection(.enabled)
                         Button("导出诊断日志", action: exportDiagnostics).disabled(preparingExport)
                     }
+                    if let issue = manager.policyIssue, !manager.policyBusy {
+                        Text(issue).font(.footnote).foregroundStyle(.orange)
+                    }
                     if manager.policyBusy {
                         if manager.policyTimedOut {
                             Label("系统处理较慢。仍可退出或导出日志。", systemImage: "clock")

@@ -74,11 +74,17 @@ final class PolicyController<Token: Codable & Hashable> {
 
     private func commit(_ next: PolicySnapshot<Token>) throws {
         let locked = Set(next.entries.filter { $0.mode == .locked }.map(\.token))
-        let hidden = Set(next.entries.filter { $0.mode == .hidden }.map(\.token))
-        guard locked.count <= 50, hidden.count <= 50 else { throw PolicyError.tooMany }
+        let hidden = next.entries.filter { $0.mode == .hidden }.map(\.token)
+        let restrictedCount = locked.count + hidden.count
+        let limit = 50
+        // Older versions allowed 50 per mode. Let those users reduce existing restrictions.
+        guard restrictedCount <= limit || restrictedCount < snapshot.entries.filter({ $0.mode != .normal }).count else {
+            throw PolicyError.tooMany
+        }
+        let shielded = locked.union(hidden.prefix(max(0, limit - locked.count)))
         try save(JSONEncoder().encode(next))
         snapshot = next
-        apply(locked, hidden)
+        apply(shielded, Set(hidden))
     }
 }
 
@@ -87,7 +93,7 @@ enum PolicyError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidState: return "管理数据损坏或版本不兼容。请先恢复全部；不会自动重新施加限制。"
-        case .tooMany: return "上锁或隐藏每类最多 50 个 App。"
+        case .tooMany: return "上锁与隐藏合计最多 50 个 App。请先将部分 App 改为正常。"
         }
     }
 }

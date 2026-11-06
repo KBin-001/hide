@@ -12,6 +12,7 @@ struct RootView: View {
     @State private var keychainReady = false
     @State private var keychainLoading = false
     @State private var managing = false
+    @State private var manager: AppManager?
     @State private var error: String?
 
     var body: some View {
@@ -29,8 +30,8 @@ struct RootView: View {
                     needsPIN = false
                     calculator.clear()
                 }
-            } else if managing {
-                ManagementContainer {
+            } else if managing, let manager {
+                ManagementView(manager: manager) {
                     managing = false
                     calculator.clear()
                 }
@@ -78,10 +79,11 @@ struct RootView: View {
         }
         catch { self.error = error.localizedDescription; keychainReady = false }
     }
-    private func press(_ key: String) {
+    @MainActor private func press(_ key: String) {
         if key == "=", let candidate = calculator.pinCandidate, (4...12).contains(candidate.count) {
             do {
                 if try PINStore.matches(candidate) {
+                    if manager == nil { manager = AppManager() }
                     calculator.clear(); managing = true; return
                 }
             } catch { self.error = error.localizedDescription }

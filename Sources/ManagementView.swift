@@ -17,12 +17,6 @@ private struct DiagnosticDocument: FileDocument {
     }
 }
 
-struct ManagementContainer: View {
-    @StateObject private var manager = AppManager()
-    let exit: () -> Void
-    var body: some View { ManagementView(manager: manager, exit: exit) }
-}
-
 struct ManagementView: View {
     @ObservedObject var manager: AppManager
     let exit: () -> Void
@@ -41,10 +35,10 @@ struct ManagementView: View {
                     LabeledContent("系统状态", value: manager.authorizationText)
                     Button(manager.busy ? "正在请求…" : manager.requestOutstanding ? "系统请求尚未结束" : "请求 / 重试个人授权") {
                         manager.requestAuthorization()
-                    }.disabled(manager.requestOutstanding)
+                    }.disabled(manager.requestOutstanding || manager.approved)
                     Text(manager.authorizationStageText).font(.footnote)
-                    if manager.requestOutstanding && !manager.busy {
-                        Text(manager.diagnostic).font(.footnote).foregroundStyle(.orange).textSelection(.enabled)
+                    if let issue = manager.authorizationIssue {
+                        Text(issue).font(.footnote).foregroundStyle(.orange).textSelection(.enabled)
                     }
                     Button("导出诊断日志", action: exportDiagnostics).disabled(preparingExport)
                     Text("授权入口和使用历史仍由 iOS 保留。IPA 签名中存在 entitlement 不代表授权成功。")
@@ -66,7 +60,7 @@ struct ManagementView: View {
                             }.pickerStyle(.segmented).disabled(!manager.storageHealthy)
                         }.padding(.vertical, 6)
                     }
-                    Text("上锁：保留图标，系统显示限制页。隐藏：请求系统隐藏图标并阻止启动。正常：只撤销本工具的限制。界面状态不代表系统实际效果。")
+                    Text("上锁会请求系统显示限制页。隐藏同时请求移除图标和限制启动。如果桌面或搜索仍显示图标，请点开检查限制页。选择正常可解除本工具的限制。")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("恢复与退出") {
@@ -80,6 +74,7 @@ struct ManagementView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
+            .onAppear(perform: manager.resumeAuthorizationIfNeeded)
             .navigationTitle("App 管理")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {

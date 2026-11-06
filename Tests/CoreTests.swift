@@ -17,7 +17,13 @@ final class CoreTests: XCTestCase {
         let b = try XCTUnwrap(p.snapshot.entries.first { $0.token == "B" }?.id)
         try p.setMode(.hidden, id: a)
         XCTAssertEqual(hidden, ["A"])
+        XCTAssertEqual(locks, ["A"])
         try p.setMode(.locked, id: b)
+        XCTAssertEqual(locks, ["A", "B"])
+        try p.setMode(.locked, id: a)
+        XCTAssertEqual(hidden, [])
+        XCTAssertEqual(locks, ["A", "B"])
+        try p.setMode(.hidden, id: a)
         try p.setMode(.normal, id: a)
         XCTAssertEqual(hidden, []); XCTAssertEqual(locks, ["B"])
         let before = writes
@@ -60,15 +66,34 @@ final class CoreTests: XCTestCase {
     }
 
     func testLimitAndModeTransition() throws {
-        let p = PolicyController<String>(load: { nil }, save: { _ in }, apply: { locked, hidden in
-            XCTAssertTrue(locked.isDisjoint(with: hidden))
+        let p = PolicyController<String>(load: { nil }, save: { _ in }, apply: { shielded, hidden in
+            XCTAssertTrue(hidden.isSubset(of: shielded))
+            XCTAssertLessThanOrEqual(shielded.count, 50)
         })
         try p.select(Set((0..<51).map(String.init)))
         for entry in p.snapshot.entries.prefix(50) { try p.setMode(.hidden, id: entry.id) }
         let last = p.snapshot.entries[50]
         XCTAssertThrowsError(try p.setMode(.hidden, id: last.id))
         try p.setMode(.locked, id: p.snapshot.entries[0].id)
+        XCTAssertThrowsError(try p.setMode(.locked, id: last.id))
+        try p.setMode(.normal, id: p.snapshot.entries[0].id)
         try p.setMode(.hidden, id: last.id)
+    }
+
+    func testCanRestoreIndividualAppsFromOlderSnapshotOverCombinedLimit() throws {
+        let entries = (0..<52).map { AppEntry(token: String($0), mode: $0 < 2 ? .locked : .hidden) }
+        let saved = try JSONEncoder().encode(PolicySnapshot(entries: entries))
+        var shielded = Set<String>(), hidden = Set<String>()
+        let p = PolicyController<String>(load: { saved }, save: { _ in }, apply: {
+            shielded = $0; hidden = $1
+        })
+        XCTAssertTrue(shielded.isEmpty && hidden.isEmpty)
+        try p.setMode(.normal, id: entries[2].id)
+        XCTAssertEqual(shielded.count, 50)
+        XCTAssertTrue(shielded.contains("0"))
+        XCTAssertFalse(hidden.contains("2"))
+        try p.setMode(.normal, id: entries[3].id)
+        XCTAssertTrue(hidden.isSubset(of: shielded))
     }
 
     func testCalculatorAndPINEntry() {

@@ -71,7 +71,7 @@ Get-Content .\Calculator.ipa.sha256
 |---|---|---|
 | iPhone 编译与产物检查 | 1.0.3 已通过 | 9 项核心测试、模拟器启动流程、arm64 编译、IPA 与签名校验通过。[Build IPA 成功记录](https://github.com/KBin-001/hide/actions/runs/42172942090) |
 | TrollStore 真机安装并运行 | 1.0.3 已确认能进入管理页并导出日志 | 用户设备 iPhone 13 Pro / iOS 16.3 |
-| 个人授权、隐藏、恢复、上锁 | 1.0.4 真机反馈隐藏后仍可见，重进时卡住 | 1.0.5 恢复候选暂未打包，详见[验收记录](docs/VALIDATION.md) |
+| 个人授权、隐藏、恢复、上锁 | 1.0.4 真机反馈隐藏后仍可见，重进时卡住 | 1.0.5 已打包，待 iOS 16.3 真机复验。[验收记录](docs/VALIDATION.md) |
 
 Actions 对**解压后的实际 IPA**检查：唯一 `Payload/*.app`、显示名和固定 ID、Info.plist 最低系统 16.0、iPhoneOS 平台/iPhone 设备族、arm64 架构、Mach-O iOS 平台及最低版本、codesign 完整性、签名内 Family Controls/Keychain entitlement 和无额外权限。检查失败不上传成功产物。验证报告仍把安装、授权、隐藏效果标为待真机验证。
 

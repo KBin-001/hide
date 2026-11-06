@@ -37,9 +37,13 @@
 
 候选改动移除管理列表每行的系统 token 标签，使用本地备注和系统图标占位。后台串行加载与提交，首次选择正常 App 只写本地。记录 `policy.store.begin`、`policy.shield.begin/end`、`policy.blocked.begin/end`，可区分等待发生在哪个边界。写入返回只表示调用结束，仍需观察桌面、搜索和启动结果。
 
-下一轮同一设备复现，先打开计算器和管理页，记录能否正常返回。选一个 App，依次验证上锁、正常、隐藏、正常。每个状态检查桌面、搜索、实际启动，再重新进入管理页。若卡住，记录发生在 PIN 前还是进入管理页后；能操作时导出「诊断」中的日志。若独立上锁有效而隐藏仍失败，再对比 Apple 公共 API 的 token 和已独立核实的 Bundle ID 两种初始化方式。恢复候选这轮仅做源代码检查，尚未运行 Swift 测试、打包或在真机复验。[Apple 看门狗排查](https://developer.apple.com/documentation/xcode/addressing-watchdog-terminations) · [恢复规格](SCREEN-TIME-RECOVERY-SPEC.md)
+同一设备复现时，若卡住，记录发生在 PIN 前还是进入管理页后；能操作时导出「诊断」中的日志。若独立上锁有效而隐藏仍失败，再对比 Apple 公共 API 的 token 和已独立核实的 Bundle ID 两种初始化方式。[Apple 看门狗排查](https://developer.apple.com/documentation/xcode/addressing-watchdog-terminations) · [恢复规格](SCREEN-TIME-RECOVERY-SPEC.md)
 
 ## 1.0.5 真机记录表
+
+[Build IPA 42190327170](https://github.com/KBin-001/hide/actions/runs/42190327170) 验证源码 `b131268`。12 项核心测试和 1 项模拟器 UI 测试通过。核心测试覆盖旧记录读取、备注和中断恢复。UI 测试从空记录启动，覆盖前后台和冷启动重进、模拟限制请求超时、退出后迟到结果与再次恢复。等待中确认导出按钮可用。真机实际导出、旧记录页面重进、隐藏、上锁、恢复和长列表滚动仍待复验。
+
+已下载 1.0.5 / build 6 IPA，复核 SHA-256、arm64、最低 iOS 16.0 以及云端签名报告。IPA 与 dSYM 的 Mach-O UUID 均为 `6D1FAB7B-6F26-3159-9B77-D457C3A112D8`。[IPA artifact](https://github.com/KBin-001/hide/actions/runs/42190327170/artifacts/13489906408) · [dSYM artifact](https://github.com/KBin-001/hide/actions/runs/42190327170/artifacts/13489781709)
 
 用 TrollStore 覆盖安装 1.0.5（build 6）。进入管理页后，从同一条记录逐项操作。等待「正在提交」结束再切到桌面。每项实际点开一次目标 App。系统搜索仍显示图标时，分别记录点击搜索结果的行为和点击桌面图标的行为。
 

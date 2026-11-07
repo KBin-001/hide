@@ -41,8 +41,8 @@ final class LaunchTests: XCTestCase {
         XCTAssertTrue(previousGrant.waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["连接系统授权"].isEnabled,
                       "Previous approval must leave the cold-launch connection available for a manual attempt")
-        XCTAssertFalse(app.buttons["系统选择器（上锁）"].isEnabled,
-                       "A previous grant must not unlock app selection until iOS confirms it in this process")
+        XCTAssertFalse(app.buttons["系统选择器（上锁）"].exists,
+                       "Only the Bundle ID catalog should offer new selections")
 
         XCTAssertTrue(app.buttons["选择 App"].isEnabled,
                       "The catalog can be browsed without granting authority to hide apps")

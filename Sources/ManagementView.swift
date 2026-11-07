@@ -1,6 +1,4 @@
 import SwiftUI
-import FamilyControls
-import ManagedSettings
 import UniformTypeIdentifiers
 
 private struct DiagnosticDocument: FileDocument {
@@ -21,7 +19,6 @@ struct ManagementView: View {
     @ObservedObject var manager: AppManager
     let changePIN: () -> Void
     let exit: () -> Void
-    @State private var picking = false
     @State private var pickingCatalog = false
     @State private var showingRecovery = false
     @State private var addingBundleApp = false
@@ -34,9 +31,6 @@ struct ManagementView: View {
     @State private var preparingExport = false
     @State private var exportError = false
     @State private var recoveryAction: RecoveryAction?
-    @State private var editingID: UUID?
-    @State private var nickname = ""
-    @State private var renaming = false
     @State private var diagnosticsExpanded = false
 
     private enum RecoveryAction { case restoreAndExit, resetList }
@@ -63,7 +57,7 @@ struct ManagementView: View {
             .alert("连接恢复说明", isPresented: $showingRecovery) {
                 Button("知道了", role: .cancel) { }
             } message: {
-                Text("1. 长时间无响应时，先导出日志，再从 App 切换器关闭计算器。\n2. 到「设置 → 屏幕使用时间 → 有屏幕使用时间访问权限的 App」，只关闭计算器的权限。撤销会解除计算器施加的限制，之前通过系统选择器选的 App 需要重选。\n3. 重开计算器，进入管理页后点一次「连接系统授权」。清空旧记录可用「诊断 → 清空管理列表」。")
+                Text("1. 长时间无响应时，先导出日志，再从 App 切换器关闭计算器。\n2. 到「设置 → 屏幕使用时间 → 有屏幕使用时间访问权限的 App」，只关闭计算器的权限。撤销会解除计算器施加的限制。\n3. 重开计算器，进入管理页后点一次「连接系统授权」。清空目录记录可用「诊断 → 清空管理列表」。")
             }
             .alert("清空管理列表？", isPresented: $confirmResetList) {
                 Button("确认清空", role: .destructive) { recoveryAction = .resetList }
@@ -85,15 +79,6 @@ struct ManagementView: View {
             } message: {
                 Text("填写从可信来源核实的 App 标识。添加后默认为正常，不会立即隐藏。")
             }
-            .alert("备注名称", isPresented: $renaming) {
-                TextField("例如：社交 App", text: $nickname)
-                Button("保存") {
-                    guard let id = editingID else { return }
-                    let name = nickname
-                    Task { await manager.rename(name, id: id) }
-                }
-                Button("取消", role: .cancel) { }
-            }
     }
 
     private var presentedContent: some View {
@@ -106,12 +91,6 @@ struct ManagementView: View {
                 Button("好", role: .cancel) { }
             } message: {
                 Text("请重新导出并选择一个可写入的文件夹。")
-            }
-            .sheet(isPresented: $picking) {
-                AppSelectionSheet(selection: manager.selection) { selection in
-                    picking = false
-                    Task { await manager.select(selection) }
-                }
             }
             .confirmationDialog("撤销本工具施加的全部限制并返回计算器？", isPresented: $confirmRestore, titleVisibility: .visible) {
                 Button("确认恢复全部", role: .destructive) { recoveryAction = .restoreAndExit }
@@ -146,7 +125,6 @@ struct ManagementView: View {
             List {
                 authorizationSection
                 bundleIDSection
-                pickerSection
                 recoverySection
             }
             .listStyle(.plain)
@@ -249,6 +227,8 @@ struct ManagementView: View {
                     addingBundleApp = true
                 }
                 .disabled(!manager.policyReady || manager.policyBusy || !manager.storageHealthy)
+                Button("清理旧选择器限制") { Task { await manager.restoreLegacy() } }
+                    .disabled(manager.policyBusy || !manager.policyReady)
                 Button("清空管理列表", role: .destructive) { confirmResetList = true }
                     .disabled(manager.policyBusy || !manager.policyReady)
             }
@@ -273,34 +253,6 @@ struct ManagementView: View {
         }
     }
 
-    private var pickerSection: some View {
-        Section {
-            Button("系统选择器（上锁）") { picking = true }
-                .disabled(!manager.policyReady || manager.policyBusy || !manager.approved || !manager.storageHealthy)
-                .managementRow()
-            ForEach(Array(manager.entries.enumerated()), id: \.element.id) { index, entry in
-                ManagedAppRow(title: entry.nickname ?? "App \(index + 1)", mode: entry.mode,
-                              canRestrict: manager.approved) { mode in
-                    Task { await manager.setMode(mode, id: entry.id) }
-                } edit: {
-                    editingID = entry.id
-                    nickname = entry.nickname ?? ""
-                    renaming = true
-                }
-                .disabled(manager.policyBusy || !manager.storageHealthy)
-                .managementRow()
-            }
-        } header: {
-            sectionTitle("系统选择 · \(manager.entries.count)")
-            if !manager.entries.isEmpty, !manager.bundleEntries.isEmpty {
-                Text("同一 App 若在两处受限，需分别恢复。")
-                    .font(.footnote)
-                    .foregroundStyle(ManagementStyle.muted)
-                    .managementRow()
-            }
-        }
-    }
-
     private func sectionTitle(_ title: String) -> some View {
         Text(title)
             .font(.subheadline.weight(.semibold))
@@ -319,66 +271,13 @@ struct ManagementView: View {
     }
 }
 
-private struct AppSelectionSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var draft: FamilyActivitySelection
-    let save: (FamilyActivitySelection) -> Void
-
-    init(selection: FamilyActivitySelection, save: @escaping (FamilyActivitySelection) -> Void) {
-        _draft = State(initialValue: selection)
-        self.save = save
-    }
-
-    var body: some View {
-        NavigationStack {
-            FamilyActivityPicker(selection: $draft)
-                .navigationTitle("选择具体 App")
-                .tint(ManagementStyle.mint)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
-                    ToolbarItem(placement: .confirmationAction) { Button("保存") { save(draft) } }
-                }
-        }
-    }
-}
-
-private struct ManagedAppRow: View {
-    let title: String
-    let mode: AppMode
-    let canRestrict: Bool
-    let change: (AppMode) -> Void
-    let edit: () -> Void
-
-    var body: some View {
-        HStack(spacing: 12) {
-            ManagementAppIcon()
-            Text(title).font(.body.weight(.medium))
-            Spacer(minLength: 8)
-            Menu {
-                ForEach(AppMode.allCases) { option in
-                    Button {
-                        change(option)
-                    } label: {
-                        Label(option.title, systemImage: option == mode ? "checkmark" : statusIcon(for: option))
-                    }
-                    .disabled(option != .normal && !canRestrict)
-                }
-                Button(action: edit) { Label("备注名称", systemImage: "pencil") }
-            } label: {
-                ManagedStatusLabel(mode: mode)
-            }
-            .accessibilityLabel("\(title)，已保存请求：\(mode.title)")
-        }
-    }
-}
-
 private struct BundleIDAppRow: View {
     @ObservedObject var manager: AppManager
     let entry: AppEntry<String>
 
     var body: some View {
         HStack(spacing: 12) {
-            ManagementAppIcon(category: AppCatalog.apps.first { $0.id == entry.token }?.category)
+            ManagementAppIcon(category: AppCatalog.byID[entry.token]?.category)
             VStack(alignment: .leading, spacing: 4) {
                 Text(entry.nickname ?? entry.token).fontWeight(.medium)
                 if entry.nickname != nil {

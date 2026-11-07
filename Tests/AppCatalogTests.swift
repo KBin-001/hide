@@ -4,7 +4,10 @@ import XCTest
 final class AppCatalogTests: XCTestCase {
     func testRequestedAppsAndSearchAliases() throws {
         let expected = ["QQ": "com.tencent.mqq", "微信": "com.tencent.xin", "抖音": "com.ss.iphone.ugc.Aweme",
-                        "小红书": "com.xingin.discover", "X": "com.atebits.Tweetie2"]
+                        "小红书": "com.xingin.discover", "X": "com.atebits.Tweetie2",
+                        "腾讯元宝": "com.tencent.hunyuan.app.chat", "ChatGPT": "com.openai.chat",
+                        "AlipayHK": "com.alipay.wallethk", "台鐵e訂通": "tw.gov.tra.twtraffic",
+                        "PayPay": "jp.pay2.app.ios"]
         for (name, id) in expected {
             XCTAssertEqual(AppCatalog.apps.first { $0.name == name }?.id, id)
         }
@@ -16,8 +19,8 @@ final class AppCatalogTests: XCTestCase {
     }
 
     func testCatalogIdentifiersAreUniqueAndBatchCanBeSavedWithoutRestrictions() throws {
-        XCTAssertGreaterThanOrEqual(AppCatalog.apps.count, 150)
-        XCTAssertEqual(Set(AppCatalog.apps.map(\.id)).count, AppCatalog.apps.count)
+        XCTAssertGreaterThanOrEqual(AppCatalog.apps.count, 484)
+        XCTAssertEqual(Set(AppCatalog.apps.map { $0.id.lowercased() }).count, AppCatalog.apps.count)
         XCTAssertEqual(Set(AppCatalog.apps.map(\.category)), Set(AppCatalog.categories))
         var saves = 0
         var saved: Data?

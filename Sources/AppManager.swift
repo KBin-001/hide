@@ -1,12 +1,10 @@
 import SwiftUI
 import Combine
 import FamilyControls
-import ManagedSettings
 
 @MainActor
 final class AppManager: ObservableObject {
     @Published private(set) var bundleEntries: [AppEntry<String>] = []
-    @Published private(set) var entries: [AppEntry<ApplicationToken>] = []
     @Published private(set) var authorization: AuthorizationStatus = .notDetermined
     @Published private(set) var diagnostic = "在此查看 App 限制提交结果。"
     @Published private(set) var authorizationIssue: String?
@@ -24,11 +22,6 @@ final class AppManager: ObservableObject {
     private let approvalKey = "family-controls.previous-approval"
     private var authorizationObservation: AnyCancellable?
 
-    var selection: FamilyActivitySelection {
-        var value = FamilyActivitySelection()
-        value.applicationTokens = Set(entries.map(\.token))
-        return value
-    }
     var approved: Bool { authorization == .approved }
     var authorizationText: String {
         if authorizationSignatureMissing { return "签名缺少权限" }
@@ -40,10 +33,7 @@ final class AppManager: ObservableObject {
         }
     }
     private var previouslyApproved: Bool {
-        let defaults = UserDefaults.standard
-        // Older builds may only have a saved selection as evidence of a previous grant.
-        if defaults.object(forKey: approvalKey) == nil { return !entries.isEmpty }
-        return defaults.bool(forKey: approvalKey)
+        UserDefaults.standard.bool(forKey: approvalKey)
     }
 
     func requestAuthorization() {
@@ -141,28 +131,7 @@ final class AppManager: ObservableObject {
     }
     func loadPolicy() async {
         guard !policyReady else { return }
-        await perform("load", message: "已读取本地管理记录。") { await policyWorker.run { _ in } }
-    }
-
-    func select(_ value: FamilyActivitySelection) async {
-        guard approved else { diagnostic = "请先获得个人授权。"; return }
-        let tokens = value.applicationTokens
-        await perform("select", message: "已保存所选 App。") {
-            await policyWorker.run { try $0.select(tokens) }
-        }
-    }
-
-    func setMode(_ mode: AppMode, id: UUID) async {
-        guard approved || mode == .normal else { diagnostic = "系统未授权，无法提交限制。"; return }
-        await perform("mode.\(mode.rawValue)", message: "已向系统提交「\(mode.title)」请求。") {
-            await policyWorker.run { try $0.setMode(mode, id: id) }
-        }
-    }
-
-    func rename(_ nickname: String, id: UUID) async {
-        await perform("rename", message: "已保存备注名称。") {
-            await policyWorker.run { try $0.rename(nickname, id: id) }
-        }
+        await perform("load", message: "已读取本地管理记录。") { await policyWorker.load() }
     }
 
     func addBundleApp(identifier: String, name: String) async {
@@ -201,6 +170,10 @@ final class AppManager: ObservableObject {
         }
     }
 
+    func restoreLegacy() async {
+        await perform("restore_legacy", message: "已清理旧选择器限制。") { await policyWorker.restoreLegacy() }
+    }
+
     @discardableResult
     private func perform(_ operation: String, message: String,
                          work: () async -> AppPolicyWorker.Update) async -> Bool {
@@ -217,7 +190,6 @@ final class AppManager: ObservableObject {
         }
         let update = await work()
         deadline.cancel()
-        entries = update.entries
         bundleEntries = update.bundleEntries
         storageHealthy = update.storageError == nil
         policyReady = true
@@ -225,7 +197,7 @@ final class AppManager: ObservableObject {
         policyTimedOut = false
         let error = update.operationError ?? update.storageError
         let verification = update.restrictionWriteVerified.map { $0 ? "matched" : "mismatch" } ?? "not_checked"
-        log.record("policy.operation.end kind=\(operation) count=\(update.entries.count) error=\(error != nil) verification=\(verification)")
+        log.record("policy.operation.end kind=\(operation) count=\(update.bundleEntries.count) error=\(error != nil) verification=\(verification)")
         if let verified = update.restrictionWriteVerified {
             policyIssue = verified ? nil : "iOS 读回的限制与请求不一致。请导出诊断日志。"
             if !verified {

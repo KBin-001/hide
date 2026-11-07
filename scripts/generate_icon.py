@@ -1,5 +1,6 @@
-"""Original calculator icon; RGB PNGs generated with the Python standard library."""
+"""Draw the classic four-key calculator icon as opaque RGB PNGs."""
 import json
+import math
 import pathlib
 import struct
 import zlib
@@ -8,22 +9,49 @@ ROOT = pathlib.Path(__file__).resolve().parents[1] / "Resources/Assets.xcassets"
 
 
 def png(size):
+    scale = 1024 / size
+
+    def coverage(distance):
+        return max(0, min(1, 0.5 - distance / scale))
+
+    def blend(base, foreground, alpha):
+        return tuple(round(a + (b - a) * alpha) for a, b in zip(base, foreground))
+
+    def bar(x, y, half_width=79, half_height=11):
+        return max(abs(x) - half_width, abs(y) - half_height)
+
+    def glyph(x, y, right, bottom):
+        if not bottom:
+            return bar(x, y) if right else min(bar(x, y), bar(y, x))
+        if right:
+            return bar(x, abs(y) - 26)
+        diagonal = math.sqrt(0.5)
+        u, v = (x + y) * diagonal, (x - y) * diagonal
+        return min(bar(u, v), bar(v, u))
+
     def pixel(x, y):
-        x, y = x / size * 1024, y / size * 1024
-        color = (25, 29, 38)
-        if 180 <= x < 844 and 170 <= y < 362:
-            color = (56, 67, 78)
-        if 560 <= x < 770 and 245 <= y < 269:
-            color = (218, 233, 224)
-        for row in range(3):
-            for col in range(3):
-                left, top = 180 + col * 244, 430 + row * 158
-                if left <= x < left + 176 and top <= y < top + 110:
-                    color = (244, 157, 46) if col == 2 else (74, 81, 94)
-        if 714 <= x < 746 and 455 <= y < 515 or 700 <= x < 760 and 482 <= y < 490:
-            color = (255, 255, 255)
-        if 700 <= x < 760 and (638 <= y < 646 or 670 <= y < 678):
-            color = (255, 255, 255)
+        x, y = (x + 0.5) * scale, (y + 0.5) * scale
+        shade = round(62 * (1 - y / 1024) ** 0.9)
+        color = (shade, shade, shade)
+        right, bottom = x >= 512, y >= 512
+        dx, dy = x - (732 if right else 292), y - (732 if bottom else 292)
+        circle = coverage(math.hypot(dx, dy) - 186)
+        if not circle:
+            return bytes(color)
+        if right and bottom:
+            light = 1 - min(1, math.hypot(dx + 118, dy + 130) / 310)
+            fill = blend((250, 100, 22), (255, 190, 22), light)
+        else:
+            light = 1 - min(1, math.hypot(dx + 88, dy + 106) / 352)
+            gray = round(101 + 51 * light)
+            fill = (gray, gray, gray)
+        color = blend(color, fill, circle)
+        shadow = coverage(glyph(dx, dy - 5, right, bottom)) * 0.20
+        if shadow:
+            color = blend(color, (0, 0, 0), shadow)
+        mark = coverage(glyph(dx, dy, right, bottom))
+        if mark:
+            color = blend(color, (255, 255, 255), mark)
         return bytes(color)
 
     raw = b"".join(b"\0" + b"".join(pixel(x, y) for x in range(size)) for y in range(size))

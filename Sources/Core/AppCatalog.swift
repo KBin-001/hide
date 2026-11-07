@@ -15,8 +15,11 @@ struct CatalogApp: Identifiable {
 }
 
 enum AppCatalog {
-    static let categories: [String] = ["社交社区", "视频直播", "音乐阅读", "购物生活", "出行旅游", "办公学习", "浏览器网盘", "金融理财", "游戏运动", "摄影工具"]
-    static let apps: [CatalogApp] = [
+    static let categories: [String] = ["社交社区", "视频直播", "音乐阅读", "购物生活", "出行旅游", "办公学习", "浏览器网盘", "金融理财", "游戏运动", "摄影工具", "效率工具", "健康医疗", "新闻资讯"]
+    static let apps = originalApps + AppCatalogAdditions.apps
+    static let byID = Dictionary(uniqueKeysWithValues: apps.map { ($0.id, $0) })
+
+    private static let originalApps: [CatalogApp] = [
         CatalogApp(name: "QQ", id: "com.tencent.mqq", category: "社交社区", aliases: ["qq"], source: "https://github.com/smart-test-ti/SoloX/issues/204"),
         CatalogApp(name: "微信", id: "com.tencent.xin", category: "社交社区", aliases: ["WeChat", "weixin", "wx"], source: "https://github.com/smart-test-ti/SoloX/issues/204"),
         CatalogApp(name: "企业微信", id: "com.tencent.ww", category: "社交社区", aliases: [], source: "https://github.com/smart-test-ti/SoloX/issues/204"),

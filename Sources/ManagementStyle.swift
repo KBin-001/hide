@@ -46,7 +46,8 @@ struct ManagementAppIcon: View {
         "社交社区": "bubble.left.and.bubble.right", "视频直播": "play.rectangle",
         "音乐阅读": "music.note", "购物生活": "bag", "出行旅游": "location",
         "办公学习": "folder", "浏览器网盘": "globe", "金融理财": "chart.line.uptrend.xyaxis",
-        "游戏运动": "gamecontroller", "摄影工具": "camera"
+        "游戏运动": "gamecontroller", "摄影工具": "camera", "效率工具": "slider.horizontal.3",
+        "健康医疗": "heart", "新闻资讯": "newspaper"
     ]
 
     var body: some View {

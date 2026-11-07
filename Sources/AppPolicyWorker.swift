@@ -11,7 +11,8 @@ final class AppPolicyWorker: @unchecked Sendable {
     #if DEBUG && targetEnvironment(simulator)
     private var simulatedStall = false
     #endif
-    private lazy var policy: PolicyController<ApplicationToken> = {
+    // Keep reading this file for upgrades and restrict its system writes to recovery.
+    private lazy var legacyPolicy: PolicyController<ApplicationToken> = {
         let file = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("management-v1.json")
         return PolicyController(load: {
@@ -20,11 +21,9 @@ final class AppPolicyWorker: @unchecked Sendable {
         }, save: { data in
             try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-        }, otherRestrictedCount: { [unowned self] in
-            self.bundlePolicy.entries.filter { $0.mode != .normal }.count
-        }, apply: { [unowned self] shielded, hidden in
+        }, apply: { [unowned self] _, _ in
             let log = DiagnosticLog.shared
-            log.record("policy.store.begin shield=\(shielded.count) blocked=\(hidden.count)")
+            log.record("policy.legacy.restore.begin")
             #if DEBUG && targetEnvironment(simulator)
             // The UI regression exercises a slow system boundary without connecting to Screen Time.
             if ProcessInfo.processInfo.environment["CALCULATOR_TEST_SLOW_MANAGED_SETTINGS"] == "1" {
@@ -35,11 +34,10 @@ final class AppPolicyWorker: @unchecked Sendable {
                 return
             }
             #endif
-            let shieldMatches = self.submit(shielded, at: \.shield.applications, name: "shield")
-            let blocked = Set(hidden.map { Application(token: $0) })
-            let blockedMatches = self.submit(blocked, at: \.application.blockedApplications, name: "blocked")
+            let shieldMatches = self.submit([], at: \.shield.applications, name: "shield")
+            let blockedMatches = self.submit([], at: \.application.blockedApplications, name: "blocked")
             self.recordVerification(shieldMatches && blockedMatches)
-            log.record("policy.store.end shield_verified=\(shieldMatches) blocked_verified=\(blockedMatches)")
+            log.record("policy.legacy.restore.end shield_verified=\(shieldMatches) blocked_verified=\(blockedMatches)")
         })
     }()
 
@@ -81,7 +79,7 @@ final class AppPolicyWorker: @unchecked Sendable {
             try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         }, otherRestrictedCount: { [unowned self] in
-            self.policy.snapshot.entries.filter { $0.mode != .normal }.count
+            self.legacyPolicy.snapshot.entries.filter { $0.mode != .normal }.count
         }, apply: { [unowned self] identifiers in
             #if DEBUG && targetEnvironment(simulator)
             if ProcessInfo.processInfo.environment["CALCULATOR_TEST_SLOW_MANAGED_SETTINGS"] == "1" { return }
@@ -96,48 +94,59 @@ final class AppPolicyWorker: @unchecked Sendable {
         restrictionWriteVerified = (restrictionWriteVerified ?? true) && matches
     }
 
+    func load() async -> Update {
+        await run { }
+    }
+
     func editBundleApps(_ operation: @escaping @Sendable (BundleIDPolicy) throws -> Void) async -> Update {
-        await run { [self] _ in try operation(bundlePolicy) }
+        await run { [self] in try operation(bundlePolicy) }
+    }
+
+    func restoreLegacy() async -> Update {
+        await run { [self] in try clearLegacyRestrictions() }
+    }
+
+    private func clearLegacyRestrictions() throws {
+        try legacyPolicy.restoreAll()
+        if restrictionWriteVerified != false, !legacyPolicy.snapshot.entries.isEmpty {
+            try legacyPolicy.forgetRestoredApps()
+        }
     }
 
     func restoreAll(forgetApps: Bool = false) async -> Update {
-        await run { [self] policy in
+        await run { [self] in
             var firstError: Error?
-            do { try policy.restoreAll() } catch { firstError = error }
+            do { try clearLegacyRestrictions() } catch { firstError = error }
             // Always attempt both stores, even if one state file cannot be saved.
             do { try bundlePolicy.restoreAll() } catch { if firstError == nil { firstError = error } }
             if let firstError { throw firstError }
             // Retain selections when the system still reports any of our restrictions.
             if forgetApps, restrictionWriteVerified != false {
-                try policy.forgetRestoredApps()
                 try bundlePolicy.forgetRestoredApps()
             }
         }
     }
 
     struct Update {
-        let entries: [AppEntry<ApplicationToken>]
         let bundleEntries: [AppEntry<String>]
         let storageError: Error?
         let operationError: Error?
         let restrictionWriteVerified: Bool?
     }
 
-    func run(_ operation: @escaping @Sendable (PolicyController<ApplicationToken>) throws -> Void) async -> Update {
+    private func run(_ operation: @escaping @Sendable () throws -> Void) async -> Update {
         await withCheckedContinuation { continuation in
             queue.async {
                 self.restrictionWriteVerified = nil
-                let policy = self.policy
                 let error: Error?
                 do {
-                    try operation(policy)
+                    try operation()
                     error = nil
                 } catch let failure {
                     error = failure
                 }
-                continuation.resume(returning: Update(entries: policy.snapshot.entries,
-                                                      bundleEntries: self.bundlePolicy.entries,
-                                                      storageError: policy.loadError ?? self.bundlePolicy.loadError,
+                continuation.resume(returning: Update(bundleEntries: self.bundlePolicy.entries,
+                                                      storageError: self.bundlePolicy.loadError,
                                                       operationError: error,
                                                       restrictionWriteVerified: self.restrictionWriteVerified))
             }

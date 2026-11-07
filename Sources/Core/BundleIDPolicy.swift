@@ -30,8 +30,7 @@ final class BundleIDPolicy {
         let parts = value.split(separator: ".", omittingEmptySubsequences: false)
         let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-")
         // Some published identifiers (e.g. Pinterest) are not reverse DNS names.
-        let hasKnownSingleComponent = AppCatalog.apps.contains { $0.id == value }
-        guard value.utf8.count <= 255, parts.count >= 2 || hasKnownSingleComponent,
+        guard value.utf8.count <= 255, parts.count >= 2 || AppCatalog.byID[value] != nil,
               parts.allSatisfy({ !$0.isEmpty && $0.unicodeScalars.allSatisfy(allowed.contains) }),
               value.caseInsensitiveCompare(ownBundleID) != .orderedSame else {
             throw IdentifierError.invalid

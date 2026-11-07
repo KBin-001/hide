@@ -182,3 +182,5 @@ Linux Swift 6.2.3：25 项 XCTest 通过，包括常用 App 对照、搜索别�
 诊断运行 42337518432 的公开注释确认：iOS App 已编译并启动，UI 测试失败于 LaunchTests.swift:57，找不到动态文字“添加（1）”按钮；这不是新的编译失败，也不是隐藏授权失败。已为目录保存按钮及条目添加稳定 accessibilityIdentifier，并让测试在选择后等待保存按钮存在且可用，再点击保存。保留搜索、未授权浏览、选择使按钮可用以及返回管理页的断言，没有跳过目录流程。后续运行继续验证完整流程。
 
 后续运行 42338507182 在搜索状态下也无法匹配 `catalog.save`（LaunchTests.swift:57），说明仅替换动态文字选择器不足以解决操作入口不可见。将保存入口从导航栏 confirmationAction 移到 NavigationStack 外侧的底部 safeAreaInset，使其在搜索和键盘显示期间仍有独立可见位置；UI 测试明确断言搜索时底部保存按钮存在、初始不可用、选择后可用，再执行保存。当前等待下一轮实际验证。
+
+运行 42339296129 未执行到目录回归：公开注释为 LaunchTests.swift:9 的 `Failed to launch ... via Xcode: Timed out while launching application via Xcode`。这是本次运行的启动超时结果，不能据此判断底部保存按钮是否通过。鉴于此前同系列源码已经多次实际启动并进入目录，保持功能与断言不变，在新的 GitHub hosted runner / 新模拟器实例上复验一次；不把此结果记为目录验证通过，也不直接认定为已确证的系统故障。

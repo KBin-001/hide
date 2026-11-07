@@ -25,11 +25,14 @@ struct PolicySnapshot<Token: Codable & Hashable>: Codable {
 final class PolicyController<Token: Codable & Hashable> {
     private(set) var snapshot = PolicySnapshot<Token>()
     private(set) var loadError: Error?
+    private let otherRestrictedCount: () -> Int
     private let save: (Data) throws -> Void
     private let apply: (Set<Token>, Set<Token>) -> Void
 
     init(load: () throws -> Data?, save: @escaping (Data) throws -> Void,
+         otherRestrictedCount: @escaping () -> Int = { 0 },
          apply: @escaping (Set<Token>, Set<Token>) -> Void) {
+        self.otherRestrictedCount = otherRestrictedCount
         self.save = save
         self.apply = apply
         do {
@@ -57,6 +60,15 @@ final class PolicyController<Token: Codable & Hashable> {
         } else {
             try persist(next)
         }
+    }
+
+    func add(_ token: Token, nickname: String) throws {
+        guard loadError == nil else { throw PolicyError.invalidState }
+        var next = snapshot
+        guard !next.entries.contains(where: { $0.token == token }) else { return }
+        let name = nickname.trimmingCharacters(in: .whitespacesAndNewlines)
+        next.entries.append(AppEntry(token: token, nickname: name.isEmpty ? nil : String(name.prefix(40))))
+        try persist(next)
     }
 
     func setMode(_ mode: AppMode, id: UUID) throws {
@@ -93,7 +105,7 @@ final class PolicyController<Token: Codable & Hashable> {
         let restrictedCount = locked.count + hidden.count
         let limit = 50
         // Older versions allowed 50 per mode. Let those users reduce existing restrictions.
-        guard restrictedCount <= limit || restrictedCount < snapshot.entries.filter({ $0.mode != .normal }).count else {
+        guard restrictedCount + otherRestrictedCount() <= limit || restrictedCount < snapshot.entries.filter({ $0.mode != .normal }).count else {
             throw PolicyError.tooMany
         }
         let shielded = locked.union(hidden.prefix(max(0, limit - locked.count)))

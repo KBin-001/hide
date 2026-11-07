@@ -21,6 +21,10 @@ struct ManagementView: View {
     @ObservedObject var manager: AppManager
     let exit: () -> Void
     @State private var picking = false
+    @State private var showingRecovery = false
+    @State private var addingBundleApp = false
+    @State private var bundleName = ""
+    @State private var bundleIdentifier = ""
     @State private var confirmRestore = false
     @State private var exportDocument: DiagnosticDocument?
     @State private var showingExporter = false
@@ -51,6 +55,10 @@ struct ManagementView: View {
                     if let issue = manager.authorizationIssue {
                         Text(issue).font(.footnote).foregroundStyle(.orange).textSelection(.enabled)
                     }
+                    if manager.authorizationTimedOut {
+                        Button("连接恢复说明") { showingRecovery = true }
+                        Button("导出授权诊断日志", action: exportDiagnostics).disabled(preparingExport)
+                    }
                     Button {
                         picking = true
                     } label: {
@@ -64,10 +72,6 @@ struct ManagementView: View {
                         .accessibilityIdentifier("management.restore")
                     DisclosureGroup("诊断") {
                         Text(manager.diagnostic).font(.footnote).textSelection(.enabled)
-                        Button("测试隐藏 QQ（Bundle ID）") { Task { await manager.setQQProbe(hide: true) } }
-                            .disabled(!manager.approved || !manager.policyReady || manager.policyBusy)
-                        Button("结束 QQ 测试并恢复") { Task { await manager.setQQProbe(hide: false) } }
-                            .disabled(!manager.policyReady || manager.policyBusy)
                         Button("导出诊断日志", action: exportDiagnostics).disabled(preparingExport)
                     }
                     if let issue = manager.policyIssue, !manager.policyBusy {
@@ -81,6 +85,43 @@ struct ManagementView: View {
                             ProgressView(manager.policyReady ? "正在提交…" : "正在读取记录…")
                         }
                     }
+                }
+                Section {
+                    Button("添加 QQ") {
+                        Task { await manager.addBundleApp(identifier: "com.tencent.mqq", name: "QQ") }
+                    }
+                    .disabled(!manager.policyReady || manager.policyBusy || !manager.storageHealthy ||
+                              manager.bundleEntries.contains { $0.token == "com.tencent.mqq" })
+                    Button("添加其他 App") {
+                        bundleName = ""
+                        bundleIdentifier = ""
+                        addingBundleApp = true
+                    }
+                    .disabled(!manager.policyReady || manager.policyBusy || !manager.storageHealthy)
+                    ForEach(manager.bundleEntries) { entry in
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text(entry.nickname ?? entry.token)
+                                Spacer()
+                                Menu(entry.mode == .hidden ? "隐藏请求已保存" : "正常请求已保存") {
+                                    Button("隐藏") { Task { await manager.setBundleHidden(true, id: entry.id) } }
+                                        .disabled(!manager.approved || !manager.storageHealthy)
+                                    Button("恢复正常") { Task { await manager.setBundleHidden(false, id: entry.id) } }
+                                        .disabled(!manager.storageHealthy)
+                                    Button("恢复并移除", role: .destructive) {
+                                        Task { await manager.removeBundleApp(id: entry.id) }
+                                    }
+                                    .disabled(!manager.storageHealthy)
+                                }
+                            }
+                            Text(entry.token).font(.caption).foregroundStyle(.secondary)
+                        }
+                        .disabled(manager.policyBusy)
+                    }
+                } header: {
+                    Text("按 App 标识隐藏")
+                } footer: {
+                    Text("QQ 已在 iOS 16.3 真机验证。其他 App 需填写准确的 Bundle ID，并逐项确认隐藏与恢复效果。不会自动读取已安装 App；此入口仅提供隐藏和恢复。若同一 App 也在下方选择器中设有限制，需要两处都恢复正常。\n" + manager.diagnostic)
                 }
                 Section {
                     ForEach(Array(manager.entries.enumerated()), id: \.element.id) { index, entry in
@@ -137,6 +178,25 @@ struct ManagementView: View {
             }
             .confirmationDialog("撤销本工具施加的全部限制并返回计算器？", isPresented: $confirmRestore, titleVisibility: .visible) {
                 Button("确认恢复全部", role: .destructive) { restoreRequested = true }
+            }
+            .alert("连接恢复说明", isPresented: $showingRecovery) {
+                Button("知道了", role: .cancel) { }
+            } message: {
+                Text("1. 若进度继续变化，请等待系统弹窗或返回结果。\n2. 长时间无响应时，先导出日志，再从 App 切换器关闭计算器并重新连接。\n3. 若仍卡在初始化，重启手机后再试；本次真机测试通过此方式恢复。\n\niOS 未提供强制重置授权服务的公开接口。未完成的请求不能安全取消，因此不会叠加重试或自动撤销已有权限。恢复 App 可使用“恢复全部并退出”。")
+            }
+            .alert("添加 App", isPresented: $addingBundleApp) {
+                TextField("名称（可选）", text: $bundleName)
+                TextField("Bundle ID，例如 com.tencent.mqq", text: $bundleIdentifier)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Button("添加") {
+                    let identifier = bundleIdentifier
+                    let name = bundleName
+                    Task { await manager.addBundleApp(identifier: identifier, name: name) }
+                }
+                Button("取消", role: .cancel) { }
+            } message: {
+                Text("填写从可信来源核实的 App 标识。添加后默认为正常，不会立即隐藏。")
             }
             .alert("备注名称", isPresented: $renaming) {
                 TextField("例如：社交 App", text: $nickname)

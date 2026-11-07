@@ -5,6 +5,7 @@ import ManagedSettings
 
 @MainActor
 final class AppManager: ObservableObject {
+    @Published private(set) var bundleEntries: [AppEntry<String>] = []
     @Published private(set) var entries: [AppEntry<ApplicationToken>] = []
     @Published private(set) var authorization: AuthorizationStatus = .notDetermined
     @Published private(set) var diagnostic = "在此查看 App 限制提交结果。"
@@ -60,14 +61,17 @@ final class AppManager: ObservableObject {
             guard let self else { return }
             switch event {
             case .progress(let stage):
+                self.authorizationTimedOut = false
+                self.authorizationIssue = nil
                 self.requestOutstanding = true
                 self.authorizationStageText = stage.rawValue
             case .timedOut(let stage):
-                log.record("auth.\(attempt) deadline.exceeded limit_s=30 stage=\(stage)")
+                log.record("auth.\(attempt) stage.deadline.exceeded limit_s=30 stage=\(stage)")
                 self.authorizationTimedOut = true
-                self.authorizationIssue = "\(stage.rawValue)已等待 30 秒。若系统仍未返回，请先导出日志，再从 App 切换器关闭计算器，重新打开后手动连接。"
+                self.authorizationIssue = "\(stage.rawValue)已等待 30 秒，系统仍在处理。可以继续等待；服务返回后会自动更新。若一直无响应，请查看连接恢复说明。"
             case .failed(let error):
                 log.record("auth.\(attempt) ui.error domain=\((error as NSError).domain) code=\((error as NSError).code)")
+                self.authorizationTimedOut = false
                 self.requestOutstanding = false
                 if error is AuthorizationSigningError {
                     self.authorizationSignatureMissing = true
@@ -77,6 +81,7 @@ final class AppManager: ObservableObject {
                 }
             case .completed(let outcome):
                 log.record("auth.\(attempt) ui.completed outcome=\(outcome)")
+                self.authorizationTimedOut = false
                 self.requestOutstanding = false
                 self.authorizationIssue = nil
             }
@@ -160,11 +165,24 @@ final class AppManager: ObservableObject {
         }
     }
 
-    func setQQProbe(hide: Bool) async {
-        guard approved || !hide else { return }
-        let message = hide ? "已读回 QQ 的隐藏测试设置。请到桌面或搜索中确认效果。" : "已清除 QQ 的隐藏测试设置。"
-        await perform(hide ? "qq_probe.hide" : "qq_probe.restore", message: message) {
-            await policyWorker.setQQProbe(hide: hide)
+    func addBundleApp(identifier: String, name: String) async {
+        guard storageHealthy else { return }
+        await perform("bundle.add", message: "已添加，尚未施加限制。") {
+            await policyWorker.editBundleApps { try $0.add(identifier: identifier, name: name) }
+        }
+    }
+
+    func setBundleHidden(_ hidden: Bool, id: UUID) async {
+        guard approved || !hidden else { return }
+        await perform(hidden ? "bundle.hide" : "bundle.restore",
+                      message: hidden ? "已提交隐藏请求，请到桌面确认效果。" : "已提交恢复请求，请到桌面确认效果。") {
+            await policyWorker.editBundleApps { try $0.setHidden(hidden, id: id) }
+        }
+    }
+
+    func removeBundleApp(id: UUID) async {
+        await perform("bundle.remove", message: "已移除，并提交剩余 App 的隐藏设置。") {
+            await policyWorker.editBundleApps { try $0.remove(id: id) }
         }
     }
 
@@ -189,6 +207,7 @@ final class AppManager: ObservableObject {
         let update = await work()
         deadline.cancel()
         entries = update.entries
+        bundleEntries = update.bundleEntries
         storageHealthy = update.storageError == nil
         policyReady = true
         policyBusy = false

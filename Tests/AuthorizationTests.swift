@@ -39,6 +39,58 @@ final class AuthorizationTests: XCTestCase {
     }
 
     @MainActor
+    func testStageProgressAfterTimeoutRearmsDeadlineAndAcceptsLateSuccess() async {
+        let probe = AuthorizationProbe()
+        let initializing = DelayedAuthorization()
+        let requesting = DelayedAuthorization()
+        let firstTimeout = expectation(description: "Initialization waits too long")
+        let requestProgress = expectation(description: "Late initialization still advances")
+        let secondTimeout = expectation(description: "New stage has its own deadline")
+        let completed = expectation(description: "Late approval remains valid")
+        probe.onEvent = { event in
+            switch event {
+            case .timedOut(.initializing): firstTimeout.fulfill()
+            case .progress(.requesting): requestProgress.fulfill()
+            case .timedOut(.requesting): secondTimeout.fulfill()
+            case .completed(.approved): completed.fulfill()
+            default: break
+            }
+        }
+        probe.start(timeoutNanoseconds: 100_000_000) { report in
+            report(.initializing)
+            await initializing.wait()
+            report(.requesting)
+            await requesting.wait()
+            return .approved
+        }
+        await fulfillment(of: [firstTimeout], timeout: 2)
+        await initializing.release()
+        await fulfillment(of: [requestProgress, secondTimeout], timeout: 2, enforceOrder: true)
+        XCTAssertFalse(probe.start { _ in XCTFail("Pending request must not be duplicated"); return .denied })
+        await requesting.release()
+        await fulfillment(of: [completed], timeout: 2)
+        XCTAssertFalse(probe.isPending)
+    }
+
+    @MainActor
+    func testDeadlineAppliesPerStageRatherThanWholeConnection() async {
+        let probe = AuthorizationProbe()
+        let completed = expectation(description: "Combined duration exceeds one stage budget")
+        probe.onEvent = { event in
+            if case .timedOut = event { XCTFail("Progress must reset the stage deadline") }
+            if case .completed(.approved) = event { completed.fulfill() }
+        }
+        probe.start(timeoutNanoseconds: 500_000_000) { report in
+            report(.initializing)
+            try await Task.sleep(nanoseconds: 300_000_000)
+            report(.requesting)
+            try await Task.sleep(nanoseconds: 300_000_000)
+            return .approved
+        }
+        await fulfillment(of: [completed], timeout: 3)
+    }
+
+    @MainActor
     func testSystemErrorRemainsAvailableAndAllowsRetry() async {
         let probe = AuthorizationProbe()
         let failed = expectation(description: "System error is propagated")

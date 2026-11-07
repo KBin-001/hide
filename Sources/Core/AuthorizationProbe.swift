@@ -23,26 +23,21 @@ final class AuthorizationProbe {
     var onEvent: ((Event) -> Void)?
     private(set) var isPending = false
     private var stage = AuthorizationStage.checkingSignature
-    private var expired = false
+    private var timeoutNanoseconds: UInt64 = 30_000_000_000
     private var deadline: Task<Void, Never>?
 
     @discardableResult
     func start(timeoutNanoseconds: UInt64 = 30_000_000_000, work: @escaping Work) -> Bool {
         guard !isPending else { return false }
-        isPending = true; expired = false; stage = .checkingSignature
+        isPending = true; stage = .checkingSignature
         onEvent?(.progress(stage))
-        deadline = Task { [weak self] in
-            do { try await Task.sleep(nanoseconds: timeoutNanoseconds) }
-            catch { return }
-            guard let self, self.isPending else { return }
-            self.expired = true
-            self.onEvent?(.timedOut(self.stage))
-        }
+        self.timeoutNanoseconds = timeoutNanoseconds
+        armDeadline()
         Task.detached(priority: .userInitiated) { [weak self] in
             let result: Result<AuthorizationOutcome, Error>
             do {
-                result = .success(try await work { stage in
-                    Task { @MainActor [weak self] in self?.report(stage) }
+                result = .success(try await work { [weak probe = self] stage in
+                    Task { @MainActor [weak probe] in probe?.report(stage) }
                 })
             } catch { result = .failure(error) }
             await self?.finish(result)
@@ -51,8 +46,20 @@ final class AuthorizationProbe {
     }
     private func report(_ stage: AuthorizationStage) {
         guard isPending else { return }
+        guard self.stage != stage else { return }
         self.stage = stage
-        if !expired { onEvent?(.progress(stage)) }
+        armDeadline()
+        onEvent?(.progress(stage))
+    }
+    private func armDeadline() {
+        deadline?.cancel()
+        deadline = Task { [weak self] in
+            guard let timeout = self?.timeoutNanoseconds else { return }
+            do { try await Task.sleep(nanoseconds: timeout) }
+            catch { return }
+            guard let self, self.isPending else { return }
+            self.onEvent?(.timedOut(self.stage))
+        }
     }
     private func finish(_ result: Result<AuthorizationOutcome, Error>) {
         deadline?.cancel(); deadline = nil; isPending = false

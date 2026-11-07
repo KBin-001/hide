@@ -6,7 +6,7 @@ final class AppPolicyWorker: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.personal.calculatorvault.policy", qos: .userInitiated)
     private lazy var defaultStore = ManagedSettingsStore()
     private lazy var legacyStore = ManagedSettingsStore(named: .init("calculator-vault-v1"))
-    private lazy var qqProbeStore = ManagedSettingsStore(named: .init("calculator-qq-id-probe"))
+    private lazy var bundleIDStore = ManagedSettingsStore(named: .init("calculator-qq-id-probe"))
     private var restrictionWriteVerified: Bool?
     #if DEBUG && targetEnvironment(simulator)
     private var simulatedStall = false
@@ -20,6 +20,8 @@ final class AppPolicyWorker: @unchecked Sendable {
         }, save: { data in
             try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        }, otherRestrictedCount: { [unowned self] in
+            self.bundlePolicy.entries.filter { $0.mode != .normal }.count
         }, apply: { [unowned self] shielded, hidden in
             let log = DiagnosticLog.shared
             log.record("policy.store.begin shield=\(shielded.count) blocked=\(hidden.count)")
@@ -36,7 +38,7 @@ final class AppPolicyWorker: @unchecked Sendable {
             let shieldMatches = self.submit(shielded, at: \.shield.applications, name: "shield")
             let blocked = Set(hidden.map { Application(token: $0) })
             let blockedMatches = self.submit(blocked, at: \.application.blockedApplications, name: "blocked")
-            self.restrictionWriteVerified = shieldMatches && blockedMatches
+            self.recordVerification(shieldMatches && blockedMatches)
             log.record("policy.store.end shield_verified=\(shieldMatches) blocked_verified=\(blockedMatches)")
         })
     }()
@@ -68,34 +70,49 @@ final class AppPolicyWorker: @unchecked Sendable {
         return matches
     }
 
-    private func writeQQProbe(hide: Bool) -> Bool {
-        #if DEBUG && targetEnvironment(simulator)
-        if ProcessInfo.processInfo.environment["CALCULATOR_TEST_SLOW_MANAGED_SETTINGS"] == "1" { return true }
-        #endif
-        let apps: Set<Application> = hide ? [Application(bundleIdentifier: "com.tencent.mqq")] : []
-        return write(apps, at: \.application.blockedApplications, name: "blocked.bundle_id",
-                     location: "qqProbe", store: qqProbeStore)
+    // Retain the store name used by the successful QQ test, including its recovery path.
+    private lazy var bundlePolicy: BundleIDPolicy = {
+        let file = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("bundle-id-management-v1.json")
+        return BundleIDPolicy(ownBundleID: Bundle.main.bundleIdentifier ?? "com.personal.calculatorvault", load: {
+            guard FileManager.default.fileExists(atPath: file.path) else { return nil }
+            return try Data(contentsOf: file)
+        }, save: { data in
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try data.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        }, otherRestrictedCount: { [unowned self] in
+            self.policy.snapshot.entries.filter { $0.mode != .normal }.count
+        }, apply: { [unowned self] identifiers in
+            #if DEBUG && targetEnvironment(simulator)
+            if ProcessInfo.processInfo.environment["CALCULATOR_TEST_SLOW_MANAGED_SETTINGS"] == "1" { return }
+            #endif
+            let apps = Set(identifiers.map { Application(bundleIdentifier: $0) })
+            self.recordVerification(self.write(apps, at: \.application.blockedApplications,
+                                              name: "blocked.bundle_id", location: "bundleID", store: self.bundleIDStore))
+        })
+    }()
+
+    private func recordVerification(_ matches: Bool) {
+        restrictionWriteVerified = (restrictionWriteVerified ?? true) && matches
     }
 
-    func setQQProbe(hide: Bool) async -> Update {
-        await run { [self] _ in
-            restrictionWriteVerified = writeQQProbe(hide: hide)
-        }
+    func editBundleApps(_ operation: @escaping @Sendable (BundleIDPolicy) throws -> Void) async -> Update {
+        await run { [self] _ in try operation(bundlePolicy) }
     }
 
     func restoreAll() async -> Update {
         await run { [self] policy in
-            defer {
-                let existingMatches = restrictionWriteVerified ?? true
-                let probeCleared = writeQQProbe(hide: false)
-                restrictionWriteVerified = existingMatches && probeCleared
-            }
-            try policy.restoreAll()
+            var firstError: Error?
+            do { try policy.restoreAll() } catch { firstError = error }
+            // Always attempt both stores, even if one state file cannot be saved.
+            do { try bundlePolicy.restoreAll() } catch { if firstError == nil { firstError = error } }
+            if let firstError { throw firstError }
         }
     }
 
     struct Update {
         let entries: [AppEntry<ApplicationToken>]
+        let bundleEntries: [AppEntry<String>]
         let storageError: Error?
         let operationError: Error?
         let restrictionWriteVerified: Bool?
@@ -114,7 +131,8 @@ final class AppPolicyWorker: @unchecked Sendable {
                     error = failure
                 }
                 continuation.resume(returning: Update(entries: policy.snapshot.entries,
-                                                      storageError: policy.loadError,
+                                                      bundleEntries: self.bundlePolicy.entries,
+                                                      storageError: policy.loadError ?? self.bundlePolicy.loadError,
                                                       operationError: error,
                                                       restrictionWriteVerified: self.restrictionWriteVerified))
             }

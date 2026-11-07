@@ -14,6 +14,8 @@
 
 管理页的「更改 PIN」要求输入当前 PIN。忘记时，在计算器长按 **AC → 重置 PIN（验证设备身份）**，通过面容 ID 或设备锁屏密码验证后即可设置新 PIN。重置 PIN 会保留管理列表和现有 App 限制。
 
+1.1.2 / build 13 已通过 [Build IPA 42350060673](https://github.com/KBin-001/hide/actions/runs/42350060673)。下载该运行的 **Calculator-TrollStore** artifact，解压后用 TrollStore 覆盖安装。产物保留 3 天。
+
 ## 1.1.1：应用目录
 
 “选择 App”提供 170 项本地目录，按 10 类展示，支持中文名称、别名（如 WeChat、Twitter、XHS）和 Bundle ID 搜索及多选，不需要为常用应用填写标识。QQ、微信、抖音、小红书、微博、B 站、X 及影音、购物、出行、办公等应用的完整对照和来源见 [应用目录](docs/APP-CATALOG.md)。没有独立的 App 快捷添加按钮；少见应用仍可在「诊断 → 手动添加（高级）」补充。
@@ -93,8 +95,8 @@ Get-Content .\Calculator.ipa.sha256
 
 | 验收点 | 当前交付状态 | 证据 |
 |---|---|---|
-| iPhone 编译与产物检查 | 1.1.1 已通过 | 25 项核心测试、目录搜索/保存及恢复 UI 流程、arm64 编译、IPA 与签名校验通过。[Build IPA 成功记录](https://github.com/KBin-001/hide/actions/runs/42340039582) |
-| TrollStore 真机安装并运行 | 1.0.9 已确认；1.1.1 待覆盖安装验证 | 用户设备 iPhone 13 Pro / iOS 16.3 |
+| iPhone 编译与产物检查 | 1.1.2 已通过 | 26 项核心测试、模拟器改 PIN、目录搜索/保存及恢复流程、arm64 编译、IPA 与签名校验通过。[Build IPA 成功记录](https://github.com/KBin-001/hide/actions/runs/42350060673) |
+| TrollStore 真机安装并运行 | 1.0.9 已确认，1.1.2 待覆盖安装验证 | 用户设备 iPhone 13 Pro / iOS 16.3 |
 | 个人授权、隐藏、恢复、上锁 | 1.0.9 重启后授权成功，QQ 标识隐藏及恢复两轮成功；其他 App 和上锁仍待逐项验证 | 新目录沿用成功的标识路径。[验收记录](docs/VALIDATION.md) |
 
 Actions 对**解压后的实际 IPA**检查：唯一 `Payload/*.app`、显示名和固定 ID、Info.plist 最低系统 16.0、iPhoneOS 平台/iPhone 设备族、arm64 架构、Mach-O iOS 平台及最低版本、codesign 完整性、签名内 Family Controls/Keychain entitlement 和无额外权限。检查失败不上传成功产物。验证报告仍把安装、授权、隐藏效果标为待真机验证。

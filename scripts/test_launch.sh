@@ -36,10 +36,15 @@ if [ "$build_status" -ne 0 ] && [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     printf '## iOS build / UI test failure\n\n```text\n'
     python3 - <<'SUMMARY'
 from pathlib import Path
+import sys
 lines = Path('build/ui-build.log').read_text(errors='replace').splitlines()
 keywords = ('error:', 'Assertion Failure', 'failed', 'unable to type-check', 'Testing cancelled', 'timed out', 'Time limit')
 selected = [line for line in lines if any(word in line for word in keywords)]
 print('\n'.join((selected or lines)[-60:]))
+precise = [line for line in lines if 'error:' in line.lower() or 'Assertion Failure' in line]
+for line in (precise or selected)[-10:]:
+    escaped = line.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+    print('::error title=iOS build or UI test failure::' + escaped, file=sys.stderr)
 SUMMARY
     printf '\n```\n'
   } >> "$GITHUB_STEP_SUMMARY"

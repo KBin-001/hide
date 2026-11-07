@@ -184,3 +184,11 @@ Linux Swift 6.2.3：25 项 XCTest 通过，包括常用 App 对照、搜索别�
 后续运行 42338507182 在搜索状态下也无法匹配 `catalog.save`（LaunchTests.swift:57），说明仅替换动态文字选择器不足以解决操作入口不可见。将保存入口从导航栏 confirmationAction 移到 NavigationStack 外侧的底部 safeAreaInset，使其在搜索和键盘显示期间仍有独立可见位置；UI 测试明确断言搜索时底部保存按钮存在、初始不可用、选择后可用，再执行保存。当前等待下一轮实际验证。
 
 运行 42339296129 未执行到目录回归：公开注释为 LaunchTests.swift:9 的 `Failed to launch ... via Xcode: Timed out while launching application via Xcode`。这是本次运行的启动超时结果，不能据此判断底部保存按钮是否通过。鉴于此前同系列源码已经多次实际启动并进入目录，保持功能与断言不变，在新的 GitHub hosted runner / 新模拟器实例上复验一次；不把此结果记为目录验证通过，也不直接认定为已确证的系统故障。
+
+## 1.1.1 完整构建成功
+
+[Build IPA 42340039582](https://github.com/KBin-001/hide/actions/runs/42340039582) 验证源码 5d384fb（应用功能代码与 d2ea411 一致，后续仅还原手动触发和补充文档）。25 项核心测试、模拟器完整 UI 流程、arm64 Release 编译、dSYM UUID 匹配、实际 IPA 结构/签名/entitlement 校验全部通过；IPA、SHA-256、verification.json 与调试符号已上传。版本 1.1.1 / build 12。
+
+UI 流程实际覆盖搜索 WeChat、定位微信条目、搜索期间底部保存按钮存在、空选择时不可用、选中后可用、保存回管理页，以及原 PIN/前后台/冷启动/慢恢复/退出及迟到结果流程。此成功不替代真机的个人授权、目录内其他 App 的真实隐藏、恢复和上锁验收。较早的启动超时与入口不可见失败均保留为历史结果，不记成通过。
+
+用户下一步下载本次 Calculator-TrollStore artifact，解压后覆盖安装，不先卸载；先测 QQ、微信或另一个非关键 App 的「正常 → 隐藏 → 正常」，再做多 App 隔离与恢复全部。目录属于带来源的已知标识记录，不是设备已安装清单，也不意味着 170 项均已实测。

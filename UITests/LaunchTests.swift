@@ -51,10 +51,16 @@ final class LaunchTests: XCTestCase {
         XCTAssertTrue(search.waitForExistence(timeout: 5))
         search.tap()
         search.typeText("WeChat")
-        let wechat = app.buttons["微信，未选中"]
+        let wechat = app.buttons["catalog.app.com.tencent.xin"]
         XCTAssertTrue(wechat.waitForExistence(timeout: 5))
+        let saveCatalog = app.buttons["catalog.save"]
+        XCTAssertFalse(saveCatalog.isEnabled, "No apps should be selected on opening the catalog")
         wechat.tap()
-        app.buttons["添加（1）"].tap()
+        let catalogReady = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == true AND enabled == true"), object: saveCatalog)
+        XCTAssertEqual(XCTWaiter.wait(for: [catalogReady], timeout: 5), .completed,
+                       "Selecting WeChat must enable the catalog save action")
+        saveCatalog.tap()
         XCTAssertTrue(app.navigationBars["App 管理"].waitForExistence(timeout: 5))
 
         let restore = app.buttons["management.restore"]

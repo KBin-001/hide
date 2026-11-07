@@ -26,6 +26,7 @@ struct AppCatalogPicker: View {
                             save(AppCatalog.apps.filter { selected.contains($0.id) })
                         }
                         .disabled(selected.isEmpty)
+                        .accessibilityIdentifier("catalog.save")
                     }
                 }
         }
@@ -34,7 +35,7 @@ struct AppCatalogPicker: View {
     private var catalogList: some View {
         List {
             Section {
-                Text("内置 \(AppCatalog.apps.count) 个来源记录，按名称选择即可。目录不是手机已安装列表；添加后默认正常，隐藏需要系统授权。")
+                Text("内置 \(AppCatalog.apps.count) 款常用应用，按名称选择即可。列表不是手机已安装清单；添加后默认正常，隐藏需要系统授权。")
                     .font(.footnote).foregroundStyle(.secondary)
             }
             if matching.isEmpty {
@@ -85,6 +86,7 @@ private struct CatalogSelectionRow: View {
             .contentShape(Rectangle())
         }
         .disabled(isExisting)
+        .accessibilityIdentifier("catalog.app." + app.id)
         .accessibilityLabel("\(app.name)，\(isExisting ? "已添加" : isSelected ? "已选中" : "未选中")")
     }
 }

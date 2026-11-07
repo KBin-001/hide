@@ -84,13 +84,9 @@ final class LaunchTests: XCTestCase {
         let returned = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND enabled == true"), object: restore)
         XCTAssertEqual(XCTWaiter.wait(for: [returned], timeout: 30), .completed,
                        "The late result must not close the management page opened after it started")
-        restore.tap()
-        app.buttons["确认恢复全部"].tap()
-        XCTAssertTrue(app.buttons["AC"].waitForExistence(timeout: 5))
-
-        enterManagement(app, pin: pin)
         app.buttons["更改 PIN"].tap()
-        XCTAssertTrue(app.navigationBars["更改 PIN"].waitForExistence(timeout: 5))
+        let editor = app.navigationBars["更改 PIN"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
         let newPIN = String(Int.random(in: 1000...9999))
         let current = fields["当前 PIN"]
         XCTAssertTrue(current.waitForExistence(timeout: 5))
@@ -101,11 +97,15 @@ final class LaunchTests: XCTestCase {
         fields["再次输入"].tap()
         fields["再次输入"].typeText(newPIN)
         app.buttons["保存到 Keychain"].tap()
-        XCTAssertTrue(app.navigationBars["App 管理"].waitForExistence(timeout: 5))
+        let saved = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: editor)
+        XCTAssertEqual(XCTWaiter.wait(for: [saved], timeout: 5), .completed, "Saving must dismiss the PIN editor")
         app.buttons["退出"].tap()
         submitPIN(app, pin: pin)
         XCTAssertTrue(app.staticTexts["结果 \(pin)"].exists)
         enterManagement(app, pin: newPIN)
+        restore.tap()
+        app.buttons["确认恢复全部"].tap()
+        XCTAssertTrue(app.buttons["AC"].waitForExistence(timeout: 5))
     }
 
     private func enterManagement(_ app: XCUIApplication, pin: String) {

@@ -153,7 +153,7 @@ private struct PINEditor: View {
                     if mode == .change {
                         SecureField("当前 PIN", text: $currentPIN).keyboardType(.numberPad)
                     }
-                    SecureField("新 PIN", text: $pin).keyboardType(.numberPad).textContentType(.newPassword)
+                    SecureField("新 PIN", text: $pin).keyboardType(.numberPad)
                     SecureField("再次输入", text: $confirmation).keyboardType(.numberPad)
                     Button("保存到 Keychain", action: save)
                     if let message { Text(message).foregroundStyle(.orange) }

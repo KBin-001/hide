@@ -73,7 +73,9 @@ final class LaunchTests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
         app.descendants(matching: .any)["诊断"].firstMatch.tap()
         let export = app.buttons["导出诊断日志"]
-        XCTAssertTrue(export.waitForExistence(timeout: 5))
+        let exportVisible = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: export)
+        XCTAssertEqual(XCTWaiter.wait(for: [exportVisible], timeout: 5), .completed,
+                       "Opening diagnostics must reveal the export action")
         restore.tap()
         app.buttons["确认恢复全部"].tap()
         XCTAssertTrue(app.staticTexts["系统处理较慢。仍可退出或导出日志。"].waitForExistence(timeout: 12))

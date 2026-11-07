@@ -37,6 +37,7 @@ struct ManagementView: View {
     @State private var editingID: UUID?
     @State private var nickname = ""
     @State private var renaming = false
+    @State private var diagnosticsExpanded = false
 
     private enum RecoveryAction { case restoreAndExit, resetList }
 
@@ -119,7 +120,6 @@ struct ManagementView: View {
 
     private var navigationContent: some View {
         managementList
-            .listStyle(.plain)
             .managementPage()
             .onAppear { DiagnosticLog.shared.record("management.entered") }
             .task { await manager.loadPolicy() }
@@ -142,11 +142,19 @@ struct ManagementView: View {
     }
 
     private var managementList: some View {
-        List {
-            authorizationSection
-            bundleIDSection
-            pickerSection
-            recoverySection
+        ScrollViewReader { scroll in
+            List {
+                authorizationSection
+                bundleIDSection
+                pickerSection
+                recoverySection
+            }
+            .listStyle(.plain)
+            .onChange(of: diagnosticsExpanded) { expanded in
+                if expanded {
+                    withAnimation { scroll.scrollTo("management.export", anchor: .bottom) }
+                }
+            }
         }
     }
 
@@ -196,19 +204,6 @@ struct ManagementView: View {
             Button("恢复全部并退出", role: .destructive) { confirmRestore = true }
                 .disabled(manager.policyBusy || !manager.policyReady)
                 .accessibilityIdentifier("management.restore")
-            Button(action: changePIN) { Label("更改 PIN", systemImage: "key") }
-            DisclosureGroup("诊断") {
-                Button("手动添加（高级）") {
-                    bundleName = ""
-                    bundleIdentifier = ""
-                    addingBundleApp = true
-                }
-                .disabled(!manager.policyReady || manager.policyBusy || !manager.storageHealthy)
-                Text(manager.diagnostic).font(.footnote).textSelection(.enabled)
-                Button("导出诊断日志", action: exportDiagnostics).disabled(preparingExport)
-                Button("清空管理列表", role: .destructive) { confirmResetList = true }
-                    .disabled(manager.policyBusy || !manager.policyReady)
-            }
             if let issue = manager.policyIssue, !manager.policyBusy {
                 Text(issue).font(.footnote).foregroundStyle(.orange)
             }
@@ -219,6 +214,43 @@ struct ManagementView: View {
                 } else {
                     ProgressView(manager.policyReady ? "正在提交…" : "正在读取记录…")
                 }
+            }
+            Button(action: changePIN) { Label("更改 PIN", systemImage: "key") }
+            diagnosticActions
+        }
+    }
+
+    private var diagnosticActions: some View {
+        Group {
+            Button {
+                diagnosticsExpanded.toggle()
+            } label: {
+                HStack {
+                    Text("诊断")
+                    Spacer()
+                    Image(systemName: diagnosticsExpanded ? "chevron.down" : "chevron.right")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(ManagementStyle.mint)
+                        .accessibilityHidden(true)
+                }
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(diagnosticsExpanded ? "已展开" : "已折叠")
+            if diagnosticsExpanded {
+                Button("导出诊断日志", action: exportDiagnostics)
+                    .disabled(preparingExport)
+                    .id("management.export")
+                Text(manager.diagnostic).font(.footnote).textSelection(.enabled)
+                Button("手动添加（高级）") {
+                    bundleName = ""
+                    bundleIdentifier = ""
+                    addingBundleApp = true
+                }
+                .disabled(!manager.policyReady || manager.policyBusy || !manager.storageHealthy)
+                Button("清空管理列表", role: .destructive) { confirmResetList = true }
+                    .disabled(manager.policyBusy || !manager.policyReady)
             }
         }
     }
@@ -260,10 +292,12 @@ struct ManagementView: View {
             }
         } header: {
             sectionTitle("系统选择 · \(manager.entries.count)")
-        } footer: {
-            Text("列表显示已保存的请求。同一 App 若在两处受限，需分别恢复。")
-                .font(.footnote)
-                .foregroundStyle(ManagementStyle.muted)
+            if !manager.entries.isEmpty, !manager.bundleEntries.isEmpty {
+                Text("同一 App 若在两处受限，需分别恢复。")
+                    .font(.footnote)
+                    .foregroundStyle(ManagementStyle.muted)
+                    .managementRow()
+            }
         }
     }
 

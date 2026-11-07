@@ -48,6 +48,7 @@ final class LaunchTests: XCTestCase {
                       "The catalog can be browsed without granting authority to hide apps")
         app.buttons["选择 App"].tap()
         XCTAssertTrue(app.navigationBars["选择 App"].waitForExistence(timeout: 5))
+        capture(app, name: "Catalog-graphite")
         let search = app.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 5))
         search.tap()
@@ -65,6 +66,7 @@ final class LaunchTests: XCTestCase {
                        "Selecting WeChat must enable the catalog save action")
         saveCatalog.tap()
         XCTAssertTrue(app.navigationBars["App 管理"].waitForExistence(timeout: 5))
+        capture(app, name: "Management-graphite")
 
         let restore = app.buttons["management.restore"]
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND enabled == true"), object: restore)
@@ -87,6 +89,7 @@ final class LaunchTests: XCTestCase {
         app.buttons["更改 PIN"].tap()
         let editor = app.navigationBars["更改 PIN"]
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        capture(app, name: "PIN-editor-graphite")
         let newPIN = String(Int.random(in: 1000...9999))
         let current = fields["当前 PIN"]
         XCTAssertTrue(current.waitForExistence(timeout: 5))
@@ -111,6 +114,13 @@ final class LaunchTests: XCTestCase {
     private func enterManagement(_ app: XCUIApplication, pin: String) {
         submitPIN(app, pin: pin)
         XCTAssertTrue(app.navigationBars["App 管理"].waitForExistence(timeout: 10))
+    }
+
+    private func capture(_ app: XCUIApplication, name: String) {
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = name
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
     }
 
     private func submitPIN(_ app: XCUIApplication, pin: String) {

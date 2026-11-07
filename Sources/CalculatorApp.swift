@@ -152,15 +152,32 @@ private struct PINEditor: View {
                 Section {
                     if mode == .change {
                         SecureField("当前 PIN", text: $currentPIN).keyboardType(.numberPad)
+                            .listRowBackground(ManagementStyle.surface)
                     }
                     SecureField("新 PIN", text: $pin).keyboardType(.numberPad)
+                        .listRowBackground(ManagementStyle.surface)
                     SecureField("再次输入", text: $confirmation).keyboardType(.numberPad)
+                        .listRowBackground(ManagementStyle.surface)
+                } header: {
+                    Label("输入 4–12 位数字", systemImage: "lock")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(ManagementStyle.mint)
+                        .textCase(nil)
+                }
+                Section {
                     Button("保存到 Keychain", action: save)
-                    if let message { Text(message).foregroundStyle(.orange) }
+                        .buttonStyle(ManagementPrimaryButton())
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(ManagementStyle.background)
+                    if let message {
+                        Text(message).foregroundStyle(.orange).managementRow()
+                    }
                 } footer: {
-                    Text("设置 4–12 位数字。按 AC、输入 PIN，再按 = 打开管理页。忘记 PIN 时，可长按 AC 并验证设备身份来重置。")
+                    Text("按 AC、输入 PIN，再按 = 打开管理页。忘记 PIN 时，长按 AC 并验证设备身份来重置。")
+                        .foregroundStyle(ManagementStyle.muted)
                 }
             }
+            .managementPage()
             .navigationTitle(mode.title)
             .toolbar {
                 if mode != .setup {

@@ -119,8 +119,8 @@ struct ManagementView: View {
 
     private var navigationContent: some View {
         managementList
-            .listStyle(.insetGrouped)
-            .tint(.teal)
+            .listStyle(.plain)
+            .managementPage()
             .onAppear { DiagnosticLog.shared.record("management.entered") }
             .task { await manager.loadPolicy() }
             .task(id: recoveryAction) {
@@ -144,51 +144,59 @@ struct ManagementView: View {
     private var managementList: some View {
         List {
             authorizationSection
-            recoverySection
             bundleIDSection
             pickerSection
+            recoverySection
         }
     }
 
     private var authorizationSection: some View {
         Section {
-            Label {
-                LabeledContent("屏幕使用时间", value: manager.authorizationText)
-            } icon: {
-                Image(systemName: manager.approved ? "checkmark.shield.fill" : "shield")
-                    .foregroundStyle(manager.approved ? Color.teal : Color.secondary)
-            }
-            if manager.requestOutstanding {
-                if !manager.authorizationTimedOut {
-                    ProgressView(manager.authorizationStageText)
+            Group {
+                LabeledContent {
+                    Text(manager.authorizationText)
+                        .font(.subheadline)
+                        .foregroundStyle(manager.approved ? ManagementStyle.mint : ManagementStyle.muted)
+                } label: {
+                    Label {
+                        Text("屏幕使用时间").fontWeight(.medium)
+                    } icon: {
+                        Image(systemName: manager.approved ? "checkmark.shield.fill" : "shield")
+                            .foregroundStyle(manager.approved ? ManagementStyle.mint : ManagementStyle.muted)
+                    }
                 }
-            } else if !manager.approved && !manager.authorizationSignatureMissing {
-                Button("连接系统授权", action: manager.requestAuthorization)
+                if manager.requestOutstanding {
+                    if !manager.authorizationTimedOut {
+                        ProgressView(manager.authorizationStageText)
+                    }
+                } else if !manager.approved && !manager.authorizationSignatureMissing {
+                    Button("连接系统授权", action: manager.requestAuthorization)
+                }
+                if let issue = manager.authorizationIssue {
+                    Text(issue).font(.footnote).foregroundStyle(.orange).textSelection(.enabled)
+                    Button("连接恢复说明") { showingRecovery = true }
+                    Button("导出授权诊断日志", action: exportDiagnostics).disabled(preparingExport)
+                }
             }
-            if let issue = manager.authorizationIssue {
-                Text(issue).font(.footnote).foregroundStyle(.orange).textSelection(.enabled)
-            }
-            if manager.authorizationIssue != nil {
-                Button("连接恢复说明") { showingRecovery = true }
-                Button("导出授权诊断日志", action: exportDiagnostics).disabled(preparingExport)
-            }
-            Button {
-                pickingCatalog = true
-            } label: {
-                Label("选择 App", systemImage: "plus.circle")
-            }
-            .disabled(!manager.policyReady || manager.policyBusy || !manager.storageHealthy)
-            Button("系统选择器（上锁）") { picking = true }
-                .disabled(!manager.policyReady || manager.policyBusy || !manager.approved || !manager.storageHealthy)
+            .managementRow()
         }
     }
 
     private var recoverySection: some View {
         Section {
+            recoveryActions
+                .managementRow()
+        } header: {
+            sectionTitle("工具")
+        }
+    }
+
+    private var recoveryActions: some View {
+        Group {
             Button("恢复全部并退出", role: .destructive) { confirmRestore = true }
                 .disabled(manager.policyBusy || !manager.policyReady)
                 .accessibilityIdentifier("management.restore")
-            Button("更改 PIN", action: changePIN)
+            Button(action: changePIN) { Label("更改 PIN", systemImage: "key") }
             DisclosureGroup("诊断") {
                 Button("手动添加（高级）") {
                     bundleName = ""
@@ -217,18 +225,27 @@ struct ManagementView: View {
 
     private var bundleIDSection: some View {
         Section {
+            Button {
+                pickingCatalog = true
+            } label: {
+                Label("选择 App", systemImage: "plus.circle").fontWeight(.semibold)
+            }
+            .disabled(!manager.policyReady || manager.policyBusy || !manager.storageHealthy)
+            .managementRow()
             ForEach(manager.bundleEntries) { entry in
                 BundleIDAppRow(manager: manager, entry: entry)
+                    .managementRow()
             }
         } header: {
-            Text("已添加的 App · \(manager.bundleEntries.count)")
-        } footer: {
-            Text("从“选择 App”搜索并多选添加。QQ 已在真机验证；其他 App 请逐项确认效果。同一 App 在两处设有限制时，需两处都恢复正常。\n" + manager.diagnostic)
+            sectionTitle("目录 App · \(manager.bundleEntries.count)")
         }
     }
 
     private var pickerSection: some View {
         Section {
+            Button("系统选择器（上锁）") { picking = true }
+                .disabled(!manager.policyReady || manager.policyBusy || !manager.approved || !manager.storageHealthy)
+                .managementRow()
             ForEach(Array(manager.entries.enumerated()), id: \.element.id) { index, entry in
                 ManagedAppRow(title: entry.nickname ?? "App \(index + 1)", mode: entry.mode,
                               canRestrict: manager.approved) { mode in
@@ -239,12 +256,22 @@ struct ManagementView: View {
                     renaming = true
                 }
                 .disabled(manager.policyBusy || !manager.storageHealthy)
+                .managementRow()
             }
         } header: {
-            Text("管理的 App · \(manager.entries.count)")
+            sectionTitle("系统选择 · \(manager.entries.count)")
         } footer: {
-            Text("点状态可切换上锁、隐藏或正常。可设置备注名称，方便下次辨认。")
+            Text("列表显示已保存的请求。同一 App 若在两处受限，需分别恢复。")
+                .font(.footnote)
+                .foregroundStyle(ManagementStyle.muted)
         }
+    }
+
+    private func sectionTitle(_ title: String) -> some View {
+        Text(title)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(ManagementStyle.muted)
+            .textCase(nil)
     }
 
     private func exportDiagnostics() {
@@ -272,6 +299,7 @@ private struct AppSelectionSheet: View {
         NavigationStack {
             FamilyActivityPicker(selection: $draft)
                 .navigationTitle("选择具体 App")
+                .tint(ManagementStyle.mint)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
                     ToolbarItem(placement: .confirmationAction) { Button("保存") { save(draft) } }
@@ -289,10 +317,7 @@ private struct ManagedAppRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "app.fill")
-                .font(.title2)
-                .foregroundStyle(.teal)
-                .accessibilityHidden(true)
+            ManagementAppIcon()
             Text(title).font(.body.weight(.medium))
             Spacer(minLength: 8)
             Menu {
@@ -300,27 +325,15 @@ private struct ManagedAppRow: View {
                     Button {
                         change(option)
                     } label: {
-                        Label(option.title, systemImage: option == mode ? "checkmark" : icon(for: option))
+                        Label(option.title, systemImage: option == mode ? "checkmark" : statusIcon(for: option))
                     }
                     .disabled(option != .normal && !canRestrict)
                 }
                 Button(action: edit) { Label("备注名称", systemImage: "pencil") }
             } label: {
-                Label(mode.title, systemImage: icon(for: mode))
-                    .font(.subheadline.weight(.medium))
-                    .padding(.horizontal, 10)
-                    .frame(minHeight: 44)
-                    .background(Color.teal.opacity(0.12), in: Capsule())
+                ManagedStatusLabel(mode: mode)
             }
             .accessibilityLabel("\(title)，已保存请求：\(mode.title)")
-        }
-    }
-
-    private func icon(for mode: AppMode) -> String {
-        switch mode {
-        case .normal: return "checkmark.circle"
-        case .locked: return "lock"
-        case .hidden: return "eye.slash"
         }
     }
 }
@@ -330,19 +343,25 @@ private struct BundleIDAppRow: View {
     let entry: AppEntry<String>
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(entry.nickname ?? entry.token)
-                Spacer()
-                actions
+        HStack(spacing: 12) {
+            ManagementAppIcon(category: AppCatalog.apps.first { $0.id == entry.token }?.category)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(entry.nickname ?? entry.token).fontWeight(.medium)
+                if entry.nickname != nil {
+                    Text(entry.token)
+                        .font(.caption)
+                        .foregroundStyle(ManagementStyle.muted)
+                        .lineLimit(1)
+                }
             }
-            Text(entry.token).font(.caption).foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+            actions
         }
         .disabled(manager.policyBusy)
     }
 
     private var actions: some View {
-        Menu(entry.mode == .hidden ? "隐藏请求已保存" : "正常请求已保存") {
+        Menu {
             Button("隐藏") {
                 Task { await manager.setBundleHidden(true, id: entry.id) }
             }
@@ -355,6 +374,33 @@ private struct BundleIDAppRow: View {
                 Task { await manager.removeBundleApp(id: entry.id) }
             }
             .disabled(!manager.storageHealthy)
+        } label: {
+            ManagedStatusLabel(mode: entry.mode)
         }
+        .accessibilityLabel("\(entry.nickname ?? entry.token)，已保存请求：\(entry.mode.title)")
+    }
+}
+
+private struct ManagedStatusLabel: View {
+    let mode: AppMode
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Label(mode.title, systemImage: statusIcon(for: mode))
+            Image(systemName: "chevron.right").font(.caption2.weight(.semibold))
+        }
+        .font(.subheadline.weight(.medium))
+        .foregroundStyle(mode == .normal ? ManagementStyle.muted : ManagementStyle.mint)
+        .padding(.horizontal, 10)
+        .frame(minHeight: 44)
+        .background(ManagementStyle.surface, in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+private func statusIcon(for mode: AppMode) -> String {
+    switch mode {
+    case .normal: return "checkmark.circle"
+    case .locked: return "lock"
+    case .hidden: return "eye.slash"
     }
 }

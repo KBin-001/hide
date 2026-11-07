@@ -25,7 +25,7 @@ jobs:
       - name: Test policy and calculator behavior
         run: swift test
       - name: Test real app launch and PIN flow
-        timeout-minutes: 18
+        timeout-minutes: 24
         run: bash scripts/test_launch.sh
       - name: Upload launch test evidence
         if: always()

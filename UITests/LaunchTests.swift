@@ -54,6 +54,8 @@ final class LaunchTests: XCTestCase {
         let wechat = app.buttons["catalog.app.com.tencent.xin"]
         XCTAssertTrue(wechat.waitForExistence(timeout: 5))
         let saveCatalog = app.buttons["catalog.save"]
+        XCTAssertTrue(saveCatalog.waitForExistence(timeout: 5),
+                      "The bottom save action must remain visible while searching")
         XCTAssertFalse(saveCatalog.isEnabled, "No apps should be selected on opening the catalog")
         wechat.tap()
         let catalogReady = XCTNSPredicateExpectation(

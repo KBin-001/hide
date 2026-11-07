@@ -21,15 +21,25 @@ struct AppCatalogPicker: View {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("取消") { dismiss() }
                     }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("添加（\(selected.count)）") {
-                            save(AppCatalog.apps.filter { selected.contains($0.id) })
-                        }
-                        .disabled(selected.isEmpty)
-                        .accessibilityIdentifier("catalog.save")
-                    }
+
                 }
         }
+        .safeAreaInset(edge: .bottom) { saveBar }
+    }
+
+    private var saveBar: some View {
+        Button {
+            save(AppCatalog.apps.filter { selected.contains($0.id) })
+        } label: {
+            Text("添加所选 App（\(selected.count)）")
+                .frame(maxWidth: .infinity, minHeight: 44)
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(selected.isEmpty)
+        .accessibilityIdentifier("catalog.save")
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.regularMaterial)
     }
 
     private var catalogList: some View {

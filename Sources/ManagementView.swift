@@ -19,6 +19,7 @@ private struct DiagnosticDocument: FileDocument {
 
 struct ManagementView: View {
     @ObservedObject var manager: AppManager
+    let changePIN: () -> Void
     let exit: () -> Void
     @State private var picking = false
     @State private var pickingCatalog = false
@@ -27,14 +28,17 @@ struct ManagementView: View {
     @State private var bundleName = ""
     @State private var bundleIdentifier = ""
     @State private var confirmRestore = false
+    @State private var confirmResetList = false
     @State private var exportDocument: DiagnosticDocument?
     @State private var showingExporter = false
     @State private var preparingExport = false
     @State private var exportError = false
-    @State private var restoreRequested = false
+    @State private var recoveryAction: RecoveryAction?
     @State private var editingID: UUID?
     @State private var nickname = ""
     @State private var renaming = false
+
+    private enum RecoveryAction { case restoreAndExit, resetList }
 
     var body: some View {
         NavigationStack {
@@ -58,7 +62,13 @@ struct ManagementView: View {
             .alert("连接恢复说明", isPresented: $showingRecovery) {
                 Button("知道了", role: .cancel) { }
             } message: {
-                Text("1. 若进度继续变化，请等待系统弹窗或返回结果。\n2. 长时间无响应时，先导出日志，再从 App 切换器关闭计算器并重新连接。\n3. 若仍卡在初始化，重启手机后再试；本次真机测试通过此方式恢复。\n\niOS 未提供强制重置授权服务的公开接口。未完成的请求不能安全取消，因此不会叠加重试或自动撤销已有权限。恢复 App 可使用“恢复全部并退出”。")
+                Text("1. 长时间无响应时，先导出日志，再从 App 切换器关闭计算器。\n2. 到「设置 → 屏幕使用时间 → 有屏幕使用时间访问权限的 App」，只关闭计算器的权限。撤销会解除计算器施加的限制，之前通过系统选择器选的 App 需要重选。\n3. 重开计算器，进入管理页后点一次「连接系统授权」。清空旧记录可用「诊断 → 清空管理列表」。")
+            }
+            .alert("清空管理列表？", isPresented: $confirmResetList) {
+                Button("确认清空", role: .destructive) { recoveryAction = .resetList }
+                Button("取消", role: .cancel) { }
+            } message: {
+                Text("先解除计算器施加的全部限制，再清除已选 App 和备注。你的 PIN 会保留。")
             }
             .alert("添加 App", isPresented: $addingBundleApp) {
                 TextField("名称（可选）", text: $bundleName)
@@ -103,7 +113,7 @@ struct ManagementView: View {
                 }
             }
             .confirmationDialog("撤销本工具施加的全部限制并返回计算器？", isPresented: $confirmRestore, titleVisibility: .visible) {
-                Button("确认恢复全部", role: .destructive) { restoreRequested = true }
+                Button("确认恢复全部", role: .destructive) { recoveryAction = .restoreAndExit }
             }
     }
 
@@ -113,12 +123,12 @@ struct ManagementView: View {
             .tint(.teal)
             .onAppear { DiagnosticLog.shared.record("management.entered") }
             .task { await manager.loadPolicy() }
-            .task(id: restoreRequested) {
-                guard restoreRequested else { return }
-                let restored = await manager.restoreAll()
+            .task(id: recoveryAction) {
+                guard let recoveryAction else { return }
+                let restored = await manager.restoreAll(forgetApps: recoveryAction == .resetList)
                 guard !Task.isCancelled else { return }
-                restoreRequested = false
-                if restored { exit() }
+                self.recoveryAction = nil
+                if restored, recoveryAction == .restoreAndExit { exit() }
             }
             .navigationTitle("App 管理")
             .toolbar {
@@ -158,7 +168,7 @@ struct ManagementView: View {
             if let issue = manager.authorizationIssue {
                 Text(issue).font(.footnote).foregroundStyle(.orange).textSelection(.enabled)
             }
-            if manager.authorizationTimedOut {
+            if manager.authorizationIssue != nil {
                 Button("连接恢复说明") { showingRecovery = true }
                 Button("导出授权诊断日志", action: exportDiagnostics).disabled(preparingExport)
             }
@@ -178,6 +188,7 @@ struct ManagementView: View {
             Button("恢复全部并退出", role: .destructive) { confirmRestore = true }
                 .disabled(manager.policyBusy || !manager.policyReady)
                 .accessibilityIdentifier("management.restore")
+            Button("更改 PIN", action: changePIN)
             DisclosureGroup("诊断") {
                 Button("手动添加（高级）") {
                     bundleName = ""
@@ -187,6 +198,8 @@ struct ManagementView: View {
                 .disabled(!manager.policyReady || manager.policyBusy || !manager.storageHealthy)
                 Text(manager.diagnostic).font(.footnote).textSelection(.enabled)
                 Button("导出诊断日志", action: exportDiagnostics).disabled(preparingExport)
+                Button("清空管理列表", role: .destructive) { confirmResetList = true }
+                    .disabled(manager.policyBusy || !manager.policyReady)
             }
             if let issue = manager.policyIssue, !manager.policyBusy {
                 Text(issue).font(.footnote).foregroundStyle(.orange)

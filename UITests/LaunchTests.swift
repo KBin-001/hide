@@ -3,6 +3,7 @@ import XCTest
 final class LaunchTests: XCTestCase {
     func testPINReentryAndExitWhileRestoreIsSlow() throws {
         continueAfterFailure = false
+        executionTimeAllowance = 150
         let app = XCUIApplication()
         app.launchEnvironment["CALCULATOR_TEST_SLOW_MANAGED_SETTINGS"] = "1"
         app.launchArguments += ["-family-controls.previous-approval", "YES"]
@@ -86,13 +87,36 @@ final class LaunchTests: XCTestCase {
         restore.tap()
         app.buttons["确认恢复全部"].tap()
         XCTAssertTrue(app.buttons["AC"].waitForExistence(timeout: 5))
+
+        enterManagement(app, pin: pin)
+        app.buttons["更改 PIN"].tap()
+        XCTAssertTrue(app.navigationBars["更改 PIN"].waitForExistence(timeout: 5))
+        let newPIN = String(Int.random(in: 1000...9999))
+        let current = fields["当前 PIN"]
+        XCTAssertTrue(current.waitForExistence(timeout: 5))
+        current.tap()
+        current.typeText(pin)
+        fields["新 PIN"].tap()
+        fields["新 PIN"].typeText(newPIN)
+        fields["再次输入"].tap()
+        fields["再次输入"].typeText(newPIN)
+        app.buttons["保存到 Keychain"].tap()
+        XCTAssertTrue(app.navigationBars["App 管理"].waitForExistence(timeout: 5))
+        app.buttons["退出"].tap()
+        submitPIN(app, pin: pin)
+        XCTAssertTrue(app.staticTexts["结果 \(pin)"].exists)
+        enterManagement(app, pin: newPIN)
     }
 
     private func enterManagement(_ app: XCUIApplication, pin: String) {
+        submitPIN(app, pin: pin)
+        XCTAssertTrue(app.navigationBars["App 管理"].waitForExistence(timeout: 10))
+    }
+
+    private func submitPIN(_ app: XCUIApplication, pin: String) {
         XCTAssertTrue(app.buttons["AC"].waitForExistence(timeout: 10))
         app.buttons["AC"].tap()
         for digit in pin { app.buttons[String(digit)].tap() }
         app.buttons["="].tap()
-        XCTAssertTrue(app.navigationBars["App 管理"].waitForExistence(timeout: 10))
     }
 }

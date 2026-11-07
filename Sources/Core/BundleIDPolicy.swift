@@ -48,6 +48,7 @@ final class BundleIDPolicy {
     }
 
     func restoreAll() throws { try policy.restoreAll() }
+    func forgetRestoredApps() throws { try policy.forgetRestoredApps() }
 
     enum IdentifierError: LocalizedError {
         case invalid

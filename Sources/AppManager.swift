@@ -194,8 +194,11 @@ final class AppManager: ObservableObject {
         }
     }
 
-    func restoreAll() async -> Bool {
-        await perform("restore", message: "已请求解除本工具施加的全部限制。") { await policyWorker.restoreAll() }
+    func restoreAll(forgetApps: Bool = false) async -> Bool {
+        await perform(forgetApps ? "reset_list" : "restore",
+                      message: forgetApps ? "已清空本地管理列表。" : "已请求解除本工具施加的全部限制。") {
+            await policyWorker.restoreAll(forgetApps: forgetApps)
+        }
     }
 
     @discardableResult

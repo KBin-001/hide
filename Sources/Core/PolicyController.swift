@@ -106,6 +106,10 @@ final class PolicyController<Token: Codable & Hashable> {
         loadError = nil
     }
 
+    func forgetRestoredApps() throws {
+        try persist(PolicySnapshot())
+    }
+
     private func commit(_ next: PolicySnapshot<Token>) throws {
         let locked = Set(next.entries.filter { $0.mode == .locked }.map(\.token))
         let hidden = next.entries.filter { $0.mode == .hidden }.map(\.token)

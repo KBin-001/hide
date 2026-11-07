@@ -118,6 +118,27 @@ final class CoreTests: XCTestCase {
         XCTAssertTrue(hidden.isEmpty)
     }
 
+    func testForgettingRestoredAppsPersistsEmptySelectionWithoutAnotherSystemWrite() throws {
+        var saved: Data?
+        var writes = 0
+        var fail = false
+        let policy = PolicyController<String>(load: { nil }, save: {
+            if fail { throw CocoaError(.fileWriteNoPermission) }
+            saved = $0
+        }, apply: { _, _ in writes += 1 })
+        try policy.select(["A"])
+        try policy.restoreAll()
+        fail = true
+        XCTAssertThrowsError(try policy.forgetRestoredApps())
+        XCTAssertEqual(policy.snapshot.entries.map(\.token), ["A"])
+        fail = false
+        try policy.forgetRestoredApps()
+        XCTAssertTrue(policy.snapshot.entries.isEmpty)
+        let reopened = PolicyController<String>(load: { saved }, save: { _ in }, apply: { _, _ in writes += 1 })
+        XCTAssertTrue(reopened.snapshot.entries.isEmpty)
+        XCTAssertEqual(writes, 1)
+    }
+
     func testCorruptStateNeverAppliesAndCanRecover() throws {
         var calls = 0
         let p = PolicyController<String>(load: { Data("broken".utf8) }, save: { _ in }, apply: { _, _ in calls += 1 })

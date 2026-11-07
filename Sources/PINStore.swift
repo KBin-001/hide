@@ -11,8 +11,20 @@ enum PINStore {
          kSecAttrService as String: service, kSecAttrAccount as String: account]
     }
 
-    static func exists() throws -> Bool { try read() != nil }
+    static func exists() throws -> Bool { try readData() != nil }
     static func create(_ pin: String) throws {
+        var item = query
+        item[kSecValueData as String] = try encodedRecord(for: pin)
+        item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        let status = SecItemAdd(item as CFDictionary, nil)
+        guard status == errSecSuccess else { throw PINError.keychain(status) }
+    }
+    static func replace(_ pin: String) throws {
+        let update = [kSecValueData as String: try encodedRecord(for: pin)]
+        let status = SecItemUpdate(query as CFDictionary, update as CFDictionary)
+        guard status == errSecSuccess else { throw PINError.keychain(status) }
+    }
+    private static func encodedRecord(for pin: String) throws -> Data {
         guard (4...12).contains(pin.count), pin.allSatisfy({ $0.isASCII && $0.isNumber }) else {
             throw PINError.invalid
         }
@@ -21,14 +33,11 @@ enum PINStore {
         guard status == errSecSuccess else { throw PINError.keychain(status) }
         let salt = Data(bytes)
         let record = Record(salt: salt, digest: hash(pin, salt: salt))
-        var item = query
-        item[kSecValueData as String] = try JSONEncoder().encode(record)
-        item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        let result = SecItemAdd(item as CFDictionary, nil)
-        guard result == errSecSuccess else { throw PINError.keychain(result) }
+        return try JSONEncoder().encode(record)
     }
     static func matches(_ candidate: String) throws -> Bool {
-        guard let record = try read() else { return false }
+        guard let data = try readData() else { return false }
+        let record = try JSONDecoder().decode(Record.self, from: data)
         let digest = hash(candidate, salt: record.salt)
         guard digest.count == record.digest.count else { return false }
         return zip(digest, record.digest).reduce(UInt8(0)) { $0 | ($1.0 ^ $1.1) } == 0
@@ -36,7 +45,7 @@ enum PINStore {
     private static func hash(_ pin: String, salt: Data) -> Data {
         Data(SHA256.hash(data: salt + Data(pin.utf8)))
     }
-    private static func read() throws -> Record? {
+    private static func readData() throws -> Data? {
         var request = query
         request[kSecReturnData as String] = true
         request[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -45,7 +54,7 @@ enum PINStore {
         if status == errSecItemNotFound { return nil }
         guard status == errSecSuccess else { throw PINError.keychain(status) }
         guard let data = result as? Data else { throw PINError.invalid }
-        return try JSONDecoder().decode(Record.self, from: data)
+        return data
     }
     enum PINError: LocalizedError {
         case invalid, keychain(OSStatus)

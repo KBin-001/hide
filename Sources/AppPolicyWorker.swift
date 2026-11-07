@@ -100,13 +100,18 @@ final class AppPolicyWorker: @unchecked Sendable {
         await run { [self] _ in try operation(bundlePolicy) }
     }
 
-    func restoreAll() async -> Update {
+    func restoreAll(forgetApps: Bool = false) async -> Update {
         await run { [self] policy in
             var firstError: Error?
             do { try policy.restoreAll() } catch { firstError = error }
             // Always attempt both stores, even if one state file cannot be saved.
             do { try bundlePolicy.restoreAll() } catch { if firstError == nil { firstError = error } }
             if let firstError { throw firstError }
+            // Retain selections when the system still reports any of our restrictions.
+            if forgetApps, restrictionWriteVerified != false {
+                try policy.forgetRestoredApps()
+                try bundlePolicy.forgetRestoredApps()
+            }
         }
     }
 

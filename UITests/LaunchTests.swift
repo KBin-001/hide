@@ -40,8 +40,22 @@ final class LaunchTests: XCTestCase {
         XCTAssertTrue(previousGrant.waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["连接系统授权"].isEnabled,
                       "Previous approval must leave the cold-launch connection available for a manual attempt")
-        XCTAssertFalse(app.buttons["选择 App"].isEnabled,
+        XCTAssertFalse(app.buttons["系统选择器（上锁）"].isEnabled,
                        "A previous grant must not unlock app selection until iOS confirms it in this process")
+
+        XCTAssertTrue(app.buttons["选择 App"].isEnabled,
+                      "The catalog can be browsed without granting authority to hide apps")
+        app.buttons["选择 App"].tap()
+        XCTAssertTrue(app.navigationBars["选择 App"].waitForExistence(timeout: 5))
+        let search = app.searchFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        search.typeText("WeChat")
+        let wechat = app.buttons["微信，未选中"]
+        XCTAssertTrue(wechat.waitForExistence(timeout: 5))
+        wechat.tap()
+        app.buttons["添加（1）"].tap()
+        XCTAssertTrue(app.navigationBars["App 管理"].waitForExistence(timeout: 5))
 
         let restore = app.buttons["management.restore"]
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND enabled == true"), object: restore)

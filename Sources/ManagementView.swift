@@ -21,6 +21,7 @@ struct ManagementView: View {
     @ObservedObject var manager: AppManager
     let exit: () -> Void
     @State private var picking = false
+    @State private var pickingCatalog = false
     @State private var showingRecovery = false
     @State private var addingBundleApp = false
     @State private var bundleName = ""
@@ -37,8 +38,18 @@ struct ManagementView: View {
 
     var body: some View {
         NavigationStack {
-            editorContent
+            catalogPresentedContent
         }
+    }
+
+    private var catalogPresentedContent: some View {
+        editorContent
+            .sheet(isPresented: $pickingCatalog) {
+                AppCatalogPicker(existingIDs: Set(manager.bundleEntries.map(\.token))) { apps in
+                    pickingCatalog = false
+                    Task { await manager.addCatalogApps(apps) }
+                }
+            }
     }
 
     // Separate opaque return types keep the SwiftUI constraint solver's work bounded.
@@ -152,11 +163,13 @@ struct ManagementView: View {
                 Button("导出授权诊断日志", action: exportDiagnostics).disabled(preparingExport)
             }
             Button {
-                picking = true
+                pickingCatalog = true
             } label: {
                 Label("选择 App", systemImage: "plus.circle")
             }
-            .disabled(!manager.policyReady || manager.policyBusy || !manager.approved || !manager.storageHealthy)
+            .disabled(!manager.policyReady || manager.policyBusy || !manager.storageHealthy)
+            Button("系统选择器（上锁）") { picking = true }
+                .disabled(!manager.policyReady || manager.policyBusy || !manager.approved || !manager.storageHealthy)
         }
     }
 
@@ -166,6 +179,12 @@ struct ManagementView: View {
                 .disabled(manager.policyBusy || !manager.policyReady)
                 .accessibilityIdentifier("management.restore")
             DisclosureGroup("诊断") {
+                Button("手动添加（高级）") {
+                    bundleName = ""
+                    bundleIdentifier = ""
+                    addingBundleApp = true
+                }
+                .disabled(!manager.policyReady || manager.policyBusy || !manager.storageHealthy)
                 Text(manager.diagnostic).font(.footnote).textSelection(.enabled)
                 Button("导出诊断日志", action: exportDiagnostics).disabled(preparingExport)
             }
@@ -185,24 +204,13 @@ struct ManagementView: View {
 
     private var bundleIDSection: some View {
         Section {
-            Button("添加 QQ") {
-                Task { await manager.addBundleApp(identifier: "com.tencent.mqq", name: "QQ") }
-            }
-            .disabled(!manager.policyReady || manager.policyBusy || !manager.storageHealthy ||
-                      qqAlreadyAdded)
-            Button("添加其他 App") {
-                bundleName = ""
-                bundleIdentifier = ""
-                addingBundleApp = true
-            }
-            .disabled(!manager.policyReady || manager.policyBusy || !manager.storageHealthy)
             ForEach(manager.bundleEntries) { entry in
                 BundleIDAppRow(manager: manager, entry: entry)
             }
         } header: {
-            Text("按 App 标识隐藏")
+            Text("已添加的 App · \(manager.bundleEntries.count)")
         } footer: {
-            Text("QQ 已在 iOS 16.3 真机验证。其他 App 需填写准确的 Bundle ID，并逐项确认隐藏与恢复效果。不会自动读取已安装 App；此入口仅提供隐藏和恢复。若同一 App 也在下方选择器中设有限制，需要两处都恢复正常。\n" + manager.diagnostic)
+            Text("从“选择 App”搜索并多选添加。QQ 已在真机验证；其他 App 请逐项确认效果。同一 App 在两处设有限制时，需两处都恢复正常。\n" + manager.diagnostic)
         }
     }
 
@@ -224,10 +232,6 @@ struct ManagementView: View {
         } footer: {
             Text("点状态可切换上锁、隐藏或正常。可设置备注名称，方便下次辨认。")
         }
-    }
-
-    private var qqAlreadyAdded: Bool {
-        manager.bundleEntries.contains { $0.token == "com.tencent.mqq" }
     }
 
     private func exportDiagnostics() {

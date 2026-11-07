@@ -172,6 +172,14 @@ final class AppManager: ObservableObject {
         }
     }
 
+    func addCatalogApps(_ apps: [CatalogApp]) async {
+        guard storageHealthy else { return }
+        let additions = apps.map { (identifier: $0.id, name: $0.name) }
+        await perform("bundle.catalog.add", message: "已保存所选 App，默认正常，尚未施加限制。") {
+            await policyWorker.editBundleApps { try $0.addApps(additions) }
+        }
+    }
+
     func setBundleHidden(_ hidden: Bool, id: UUID) async {
         guard approved || !hidden else { return }
         await perform(hidden ? "bundle.hide" : "bundle.restore",

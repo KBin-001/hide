@@ -63,11 +63,18 @@ final class PolicyController<Token: Codable & Hashable> {
     }
 
     func add(_ token: Token, nickname: String) throws {
+        try add([(token: token, nickname: nickname)])
+    }
+
+    func add(_ additions: [(token: Token, nickname: String)]) throws {
         guard loadError == nil else { throw PolicyError.invalidState }
         var next = snapshot
-        guard !next.entries.contains(where: { $0.token == token }) else { return }
-        let name = nickname.trimmingCharacters(in: .whitespacesAndNewlines)
-        next.entries.append(AppEntry(token: token, nickname: name.isEmpty ? nil : String(name.prefix(40))))
+        var known = Set(next.entries.map(\.token))
+        for addition in additions where known.insert(addition.token).inserted {
+            let name = addition.nickname.trimmingCharacters(in: .whitespacesAndNewlines)
+            next.entries.append(AppEntry(token: addition.token, nickname: name.isEmpty ? nil : String(name.prefix(40))))
+        }
+        guard next.entries.count != snapshot.entries.count else { return }
         try persist(next)
     }
 
